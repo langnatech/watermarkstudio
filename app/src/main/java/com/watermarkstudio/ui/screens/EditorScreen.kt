@@ -10,6 +10,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -47,6 +49,7 @@ import com.watermarkstudio.model.MediaItem
 import com.watermarkstudio.removal.preview.RemovalPreviewHelper
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.model.WatermarkType
+import com.watermarkstudio.ui.components.InteractiveWatermarkPreview
 import com.watermarkstudio.viewmodel.WatermarkViewModel
 import kotlinx.coroutines.launch
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -302,11 +305,14 @@ fun EditorScreen(
                     color = Color(0xFF0F172A).copy(alpha = 0.95f),
                     shadowElevation = 16.dp
                 ) {
+                    val bottomScroll = rememberScrollState()
                     Column(
                         modifier = Modifier
+                            .heightIn(max = 440.dp)
+                            .verticalScroll(bottomScroll)
                             .padding(24.dp)
                             .navigationBarsPadding(),
-                        verticalArrangement = Arrangement.spacedBy(20.dp)
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         if (mode == WatermarkType.REMOVE) {
                             Row(
@@ -392,6 +398,30 @@ fun EditorScreen(
                             onSelectMedia = launchMediaPicker,
                         )
 
+                        if (uiState.selectedMedia.isNotEmpty() && activeWatermarkIndex >= 0) {
+                            val previewItem = uiState.selectedMedia.first()
+                            val activeConfig = uiState.watermarkConfigs[activeWatermarkIndex]
+                            InteractiveWatermarkPreview(
+                                mediaUri = previewItem.uri,
+                                config = activeConfig,
+                                showBackground = true,
+                                isActiveLayer = true,
+                                onConfigUpdate = { updated ->
+                                    viewModel.updateWatermark(activeWatermarkIndex, updated)
+                                },
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height(200.dp),
+                            )
+                            Text(
+                                stringResource(R.string.editor_drag_position_hint),
+                                color = Color(0xFF64748B),
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp,
+                            )
+                        }
+
                         if (activeWatermarkIndex >= 0) {
                             WatermarkConfigTools(
                                 config = uiState.watermarkConfigs[activeWatermarkIndex],
@@ -457,32 +487,40 @@ fun EditorScreen(
                             }
                         }
 
-                        // Apply Button (Electric premium gradient sheen)
                         Button(
                             onClick = startExport,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(52.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(
-                                    if (uiState.selectedMedia.isNotEmpty() && !uiState.isProcessing) {
-                                        Brush.linearGradient(colors = listOf(Color(0xFF6366F1), Color(0xFF4F46E5)))
-                                    } else {
-                                        Brush.linearGradient(colors = listOf(Color(0xFF1E293B), Color(0xFF1E293B)))
-                                    }
-                                ),
+                                .height(52.dp),
                             shape = RoundedCornerShape(16.dp),
                             enabled = uiState.selectedMedia.isNotEmpty() && !uiState.isProcessing,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.Transparent, 
-                                contentColor = Color.White,
-                                disabledContainerColor = Color.Transparent,
-                                disabledContentColor = Color.White.copy(alpha = 0.3f)
-                            )
+                            colors =
+                                ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF6366F1),
+                                    contentColor = Color.White,
+                                    disabledContainerColor = Color(0xFF1E293B),
+                                    disabledContentColor = Color.White.copy(alpha = 0.4f),
+                                ),
                         ) {
-                            Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.White)
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.btn_process_export), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
+                            if (uiState.isProcessing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(22.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Default.AutoFixHigh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                stringResource(R.string.btn_process_export),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
                         }
                     }
                 }
@@ -542,9 +580,18 @@ fun EditorScreen(
                         } else {
                             val firstItem = uiState.selectedMedia.first()
                             PreviewContainer(
-                                firstItem,
-                                uiState.watermarkConfigs,
-                                uiState.isPremium,
+                                item = firstItem,
+                                configs = uiState.watermarkConfigs,
+                                isPremium = uiState.isPremium,
+                                activeConfigIndex = activeWatermarkIndex,
+                                onActiveConfigUpdate =
+                                    if (activeWatermarkIndex >= 0) {
+                                        { updated ->
+                                            viewModel.updateWatermark(activeWatermarkIndex, updated)
+                                        }
+                                    } else {
+                                        null
+                                    },
                             )
                             
                             // High-end HUD Badge
@@ -901,7 +948,13 @@ fun ToolButton(icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun PreviewContainer(item: MediaItem, configs: List<WatermarkConfig>, isPremium: Boolean) {
+fun PreviewContainer(
+    item: MediaItem,
+    configs: List<WatermarkConfig>,
+    isPremium: Boolean,
+    activeConfigIndex: Int = -1,
+    onActiveConfigUpdate: ((WatermarkConfig) -> Unit)? = null,
+) {
     val context = LocalContext.current
     val removeConfig = configs.firstOrNull { it.type == WatermarkType.REMOVE }
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -946,7 +999,28 @@ fun PreviewContainer(item: MediaItem, configs: List<WatermarkConfig>, isPremium:
                 color = Color(0xFF10B981),
             )
         }
-        if (removeConfig == null || item.type != MediaType.IMAGE) {
+        if (onActiveConfigUpdate != null && activeConfigIndex in configs.indices) {
+            configs.forEachIndexed { index, config ->
+                InteractiveWatermarkPreview(
+                    mediaUri = item.uri,
+                    config = config,
+                    previewBitmap =
+                        if (index == activeConfigIndex && removeConfig != null && item.type == MediaType.IMAGE) {
+                            previewBitmap
+                        } else {
+                            null
+                        },
+                    showBackground = index == 0,
+                    isActiveLayer = index == activeConfigIndex,
+                    onConfigUpdate = { updated ->
+                        if (index == activeConfigIndex) {
+                            onActiveConfigUpdate(updated)
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        } else if (removeConfig == null || item.type != MediaType.IMAGE) {
             configs.forEach { config ->
                 WatermarkOverlay(config)
             }
@@ -1023,6 +1097,12 @@ fun WatermarkConfigTools(config: WatermarkConfig, onUpdate: (WatermarkConfig) ->
             OutlinedTextField(
                 value = config.text,
                 onValueChange = { onUpdate(config.copy(text = it)) },
+                placeholder = {
+                    Text(
+                        stringResource(R.string.hint_enter_watermark),
+                        color = Color(0xFF64748B),
+                    )
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp)),
@@ -1039,10 +1119,34 @@ fun WatermarkConfigTools(config: WatermarkConfig, onUpdate: (WatermarkConfig) ->
             )
         }
         
+        Text(
+            stringResource(R.string.pos_layout_header),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Black,
+            color = Color(0xFF6366F1),
+            letterSpacing = 1.sp,
+        )
+        Text(
+            stringResource(
+                R.string.x_offset_pct_format,
+                config.x.toInt(),
+            ) + " · " +
+                stringResource(
+                    R.string.y_offset_pct_format,
+                    config.y.toInt(),
+                ),
+            fontSize = 12.sp,
+            color = Color(0xFF64748B),
+        )
+
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text("Transparency", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF94A3B8))
-                Text("${(config.opacity * 100).toInt()}%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF6366F1))
+                Text(
+                    stringResource(R.string.opacity_pct_format, (config.opacity * 100).toInt()),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF94A3B8),
+                )
             }
             Slider(
                 value = config.opacity,
@@ -1057,47 +1161,17 @@ fun WatermarkConfigTools(config: WatermarkConfig, onUpdate: (WatermarkConfig) ->
 
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text("Scale", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF94A3B8))
-                Text("x${String.format("%.1f", config.scale)}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF6366F1))
+                Text(
+                    stringResource(R.string.size_scale_format, config.scale),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF94A3B8),
+                )
             }
             Slider(
                 value = config.scale,
                 onValueChange = { onUpdate(config.copy(scale = it)) },
                 valueRange = 0.1f..3f,
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.White,
-                    activeTrackColor = Color(0xFF6366F1),
-                    inactiveTrackColor = Color.White.copy(alpha = 0.1f)
-                )
-            )
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text("Horizontal Position", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF94A3B8))
-                Text("${config.x.toInt()}%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF6366F1))
-            }
-            Slider(
-                value = config.x,
-                onValueChange = { onUpdate(config.copy(x = it)) },
-                valueRange = 0f..100f,
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.White,
-                    activeTrackColor = Color(0xFF6366F1),
-                    inactiveTrackColor = Color.White.copy(alpha = 0.1f)
-                )
-            )
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text("Vertical Position", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF94A3B8))
-                Text("${config.y.toInt()}%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF6366F1))
-            }
-            Slider(
-                value = config.y,
-                onValueChange = { onUpdate(config.copy(y = it)) },
-                valueRange = 0f..100f,
                 colors = SliderDefaults.colors(
                     thumbColor = Color.White,
                     activeTrackColor = Color(0xFF6366F1),

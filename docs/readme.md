@@ -83,6 +83,7 @@ https://liang.github.io/watermark-studio/privacy-policy.html
   - **阶段三**：`VideoRemovalLimits` 时长/帧数封顶；ADVANCED 导出失败时用 Media3 `RemovalVideoRemuxer` 合并原声。
   - **阶段 3b**：视频流式逐帧处理；Pro 光流可选 Pyramid LK；图片区 inpaint 低分预览。
   - **阶段 3c**：ADVANCED 流式优先 MediaCodec 解码；Pro 原声导出 Media3 → FFmpeg-kit（LGPL）回退。
+  - **编辑器**：底部面板含可拖动预览图；导出按钮显示「执行批量转换并导出」文案。
 - Release AdMob ID：`app/src/release/res/values/admob.xml`。
 - Play 订阅 SKU 与 `BillingProducts.kt` 一致；法律页 URL 与本 Pages 部署地址一致。
 
@@ -91,6 +92,6 @@ https://liang.github.io/watermark-studio/privacy-policy.html
 | 检查项 | 期望 |
 |--------|------|
 | Pro 视频导出 | `MediaMetadataRetriever` 可读 duration；有音轨时听感正常 |
-| 免费视频 | 无原声、带应用角标 |
+| 免费视频 | 无原声 |
 | 运动背景 | ADVANCED 优于 STANDARD；极端运动可回退中值 |
 | 模拟器 | `error_remove_video_not_supported` |

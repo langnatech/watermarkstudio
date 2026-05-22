@@ -17,7 +17,7 @@
     
     <!-- HomeScreen -->
     <string name="upgrade_pro_banner">Upgrade to Studio Pro</string>
-    <string name="upgrade_pro_banner_features">Unlimited exports • No app watermark • HD output • Longer videos</string>
+    <string name="upgrade_pro_banner_features">Unlimited exports • Ad-free • HD output • Longer videos</string>
     <string name="pro_subscription_active_label">Pro subscription is active</string>
     <string name="btn_add_watermark">Add Watermark</string>
     <string name="btn_remove_stamp">Remove Stamp</string>
@@ -51,8 +51,9 @@
     <string name="btn_cancel">Cancel</string>
     <string name="snackbar_process_success">All items processed and saved to gallery!</string>
     <string name="dialog_video_limit_desc">Processing long videos (30s and original/unlimited length) is a Pro premium feature. Please upgrade to remove video duration limits entirely!</string>
-    <string name="dialog_free_exports_exhausted_desc">You have exhausted your 3 free daily exports. Upgrade to Pro for unlimited exports, removed duration limits, watermark-free results, and zero ads!</string>
+    <string name="dialog_free_exports_exhausted_desc">You have exhausted your 3 free daily exports. Upgrade to Pro for unlimited exports, longer videos, HD output, advanced removal, and an ad-free experience!</string>
     <string name="parameter_controls_header">PARAMETER CONTROLS</string>
+    <string name="editor_drag_position_hint">Drag the watermark on the preview to set position</string>
     <string name="select_media_begin">Select Media to Begin</string>
     <string name="editor_tap_select_media">Tap to select photos or videos</string>
     <string name="editor_select_media_add">Add photos / videos</string>
@@ -115,7 +116,7 @@
     <string name="privilege_video_limits_title">5-Minute PRO Video Exports</string>
     <string name="privilege_video_limits_desc">Unlock long video processing up to 5 minutes at ultra fast speed (Free is capped at 15s).</string>
     <string name="privilege_region_removal_title">Regional stamp removal</string>
-    <string name="privilege_region_removal_desc">Standard: TELEA inpaint (images) and temporal median recovery (videos, no audio). Pro: NS inpaint + seamless blend; optical-flow video recovery with original audio kept. Higher resolution, no app badge.</string>
+    <string name="privilege_region_removal_desc">Standard: TELEA inpaint (images) and temporal median recovery (videos, no audio). Pro: NS inpaint + seamless blend; optical-flow video recovery with original audio kept. Higher resolution.</string>
     <string name="editor_remove_region_hint">Align the green region over the stamp, then export. Free: standard inpaint / temporal median (video without audio). Pro: optical-flow recovery, seamless edges, and video exports keep the original soundtrack. Results depend on motion and background.</string>
     <string name="error_remove_video_not_supported">Video removal is not available on this device (emulator, low memory, or missing encoder). Try on a physical phone or use image removal.</string>
     <string name="watermark_layers_title">Watermark layers</string>
@@ -135,8 +136,8 @@
     <string name="editor_title_remove">Remove watermark</string>
     <string name="editor_workspace_subtitle">Studio console</string>
     <string name="processing_batch">Processing batch…</string>
-    <string name="privilege_brand_signature_title">No App watermark credits</string>
-    <string name="privilege_brand_signature_desc">Remove the automatic bottom-right app signature for standard outputs.</string>
+    <string name="privilege_brand_signature_title">Ad-free workspace</string>
+    <string name="privilege_brand_signature_desc">Pro hides banner ads and post-export interstitials in the editor.</string>
     <string name="privilege_hd_outputs_title">1080p Full HD Resolution</string>
     <string name="privilege_hd_outputs_desc">Maintain crystal-clear 1080p HD outputs (Free is capped at 720p to save processing memory).</string>
     <string name="share_media_chooser">Share Media</string>

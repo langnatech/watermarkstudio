@@ -2,10 +2,6 @@ package com.watermarkstudio.removal.video
 
 import android.content.ContentValues
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -55,11 +51,9 @@ object VideoRemovalEngine {
                 config,
                 sampling,
                 maxDimension,
-                isPremium,
                 quality,
                 silentFile,
                 progress,
-                ::drawTrialBadge,
             )
         report(0f, 0.75f, 1f)
 
@@ -189,17 +183,7 @@ object VideoRemovalEngine {
             } else {
                 recovered
             }
-        val withTrial =
-            if (isPremium) {
-                blended
-            } else {
-                blended.map { frame ->
-                    val badged = drawTrialBadge(frame)
-                    if (badged !== frame) frame.recycle()
-                    badged
-                }
-            }
-        val videoDurationUs = VideoRemovalLimits.videoDurationUs(withTrial.size, decoded.fps)
+        val videoDurationUs = VideoRemovalLimits.videoDurationUs(blended.size, decoded.fps)
         val tempFile = File(context.cacheDir, "remove_${System.currentTimeMillis()}.mp4")
         var exported =
             when (quality) {
@@ -207,18 +191,18 @@ object VideoRemovalEngine {
                     VideoExportMuxer.export(
                         context,
                         uri,
-                        withTrial,
+                        blended,
                         decoded.fps,
                         videoDurationUs,
                         tempFile,
                         includeAudio = true,
                     )
                 RemovalQuality.STANDARD ->
-                    SlideshowVideoEncoder.encode(withTrial, decoded.fps, tempFile)
+                    SlideshowVideoEncoder.encode(blended, decoded.fps, tempFile)
             }
         if (!exported && quality == RemovalQuality.ADVANCED) {
             val silentFile = File(context.cacheDir, "remove_silent_${System.currentTimeMillis()}.mp4")
-            if (SlideshowVideoEncoder.encode(withTrial, decoded.fps, silentFile)) {
+            if (SlideshowVideoEncoder.encode(blended, decoded.fps, silentFile)) {
                 exported =
                     RemovalAudioExporter.muxWithSourceAudio(
                         context,
@@ -230,30 +214,15 @@ object VideoRemovalEngine {
             }
             silentFile.delete()
             if (!exported) {
-                exported = SlideshowVideoEncoder.encode(withTrial, decoded.fps, tempFile)
+                exported = SlideshowVideoEncoder.encode(blended, decoded.fps, tempFile)
             }
         }
-        withTrial.forEach { if (!it.isRecycled) it.recycle() }
+        blended.forEach { if (!it.isRecycled) it.recycle() }
         if (!exported) {
             tempFile.delete()
             return null
         }
         return saveVideoToGallery(context, tempFile)
-    }
-
-    private fun drawTrialBadge(source: Bitmap): Bitmap {
-        val out = source.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = Canvas(out)
-        val paint =
-            Paint().apply {
-                color = Color.RED
-                alpha = 150
-                textSize = out.width * 0.035f
-                isAntiAlias = true
-                textAlign = Paint.Align.RIGHT
-            }
-        canvas.drawText("Free Trial App", out.width - 20f, out.height - 25f, paint)
-        return out
     }
 
     private fun saveVideoToGallery(context: Context, tempFile: File): Uri? {

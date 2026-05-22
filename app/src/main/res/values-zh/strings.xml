@@ -9,7 +9,7 @@
     
     <!-- HomeScreen -->
     <string name="upgrade_pro_banner">升级进入 Pro 专业版</string>
-    <string name="upgrade_pro_banner_features">无限导出 · 无应用角标 · 高清输出 · 更长视频</string>
+    <string name="upgrade_pro_banner_features">无限导出 · 无广告 · 高清输出 · 更长视频</string>
     <string name="pro_subscription_active_label">Pro 订阅已激活</string>
     <string name="btn_add_watermark">添加水印</string>
     <string name="btn_remove_stamp">消除水印</string>
@@ -44,8 +44,9 @@
     <string name="btn_cancel">取消</string>
     <string name="snackbar_process_success">所有选中的媒体已经完成处理并被保存到手机相册中！</string>
     <string name="dialog_video_limit_desc">处理超长视频（30秒或原始完整长度）是 Pro 会员专享功能。请升级以彻底移除限制！</string>
-    <string name="dialog_free_exports_exhausted_desc">您已用完每日 3 次的免费导出权限。升级到 Pro 尊享限制全免、去官方红字水印和纯净无广告体验！</string>
+    <string name="dialog_free_exports_exhausted_desc">您已用完每日 3 次的免费导出权限。升级到 Pro 可享无限导出、更长视频、高清输出、高级去水印与无广告体验！</string>
     <string name="parameter_controls_header">属性参数调节</string>
+    <string name="editor_drag_position_hint">在预览图上拖动水印以调整位置</string>
     <string name="select_media_begin">请点击上方选择媒体开始</string>
     <string name="editor_tap_select_media">点击选择图片或视频</string>
     <string name="editor_select_media_add">添加图片 / 视频</string>
@@ -108,7 +109,7 @@
     <string name="privilege_video_limits_title">5分钟 PRO 长视频转换</string>
     <string name="privilege_video_limits_desc">支持单次处理长达 5分钟的专业视频，极速导出不卡顿（免费版限制在前 15秒短片）。</string>
     <string name="privilege_region_removal_title">区域图章消除</string>
-    <string name="privilege_region_removal_desc">标准版：图片 TELEA 修复、视频时序中值（无原声）。Pro：NS 修复 + 无缝融合、光流视频恢复并保留原音轨；更高分辨率、无应用角标。</string>
+    <string name="privilege_region_removal_desc">标准版：图片 TELEA 修复、视频时序中值（无原声）。Pro：NS 修复 + 无缝融合、光流视频恢复并保留原音轨；更高分辨率。</string>
     <string name="error_remove_video_not_supported">当前设备无法处理视频去水印（模拟器、低内存或缺少编码器）。请在真机上重试或仅处理图片。</string>
     <string name="watermark_layers_title">水印图层</string>
     <string name="layer_type_text">文字</string>
@@ -127,8 +128,8 @@
     <string name="editor_title_remove">消除水印</string>
     <string name="editor_workspace_subtitle">工作台</string>
     <string name="processing_batch">正在批量处理…</string>
-    <string name="privilege_brand_signature_title">移除应用水印尾标</string>
-    <string name="privilege_brand_signature_desc">默认导出的成品文件中将不再附加任何“Free Trial”红字徽章，呈现个人专属内容。</string>
+    <string name="privilege_brand_signature_title">无广告体验</string>
+    <string name="privilege_brand_signature_desc">Pro 隐藏工作台横幅广告与导出后的插屏广告。</string>
     <string name="privilege_hd_outputs_title">1080p 全清无损画质</string>
     <string name="privilege_hd_outputs_desc">完美支持 1080p 物理分辨率超爽解析（免费版为了节省物理渲染内存强制降为 720p 标清分辨率）。</string>
     <string name="share_media_chooser">分享媒体</string>

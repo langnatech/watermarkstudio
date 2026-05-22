@@ -25,11 +25,9 @@ object StreamingVideoRemovalEngine {
         config: WatermarkConfig,
         sampling: VideoRemovalLimits.SamplingPlan,
         maxDimension: Int,
-        isPremium: Boolean,
         quality: RemovalQuality,
         silentOutputFile: File,
         progress: RemovalProgress?,
-        drawTrialBadge: (Bitmap) -> Bitmap,
     ): StreamingResult? {
         val preferMediaCodec = quality == RemovalQuality.ADVANCED
         val source =
@@ -72,8 +70,6 @@ object StreamingVideoRemovalEngine {
                                 quality,
                                 useFlow,
                                 flowAlgorithm,
-                                isPremium,
-                                drawTrialBadge,
                             )
                         if (!encoder.submitFrame(processed)) {
                             processed.recycle()
@@ -116,8 +112,6 @@ object StreamingVideoRemovalEngine {
         quality: RemovalQuality,
         useFlow: Boolean,
         algorithm: OpticalFlowRecoveryProcessor.FlowAlgorithm,
-        isPremium: Boolean,
-        drawTrialBadge: (Bitmap) -> Bitmap,
     ): Bitmap {
         var recovered =
             OpticalFlowRecoveryProcessor.recoverFrame(curr, prev, next, config, useFlow, algorithm)
@@ -126,10 +120,9 @@ object StreamingVideoRemovalEngine {
             if (blended !== recovered) recovered.recycle()
             recovered = blended
         }
-        val export = if (isPremium) recovered else drawTrialBadge(recovered)
-        if (export === curr) {
-            return export.copy(Bitmap.Config.ARGB_8888, false)
+        if (recovered === curr) {
+            return recovered.copy(Bitmap.Config.ARGB_8888, false)
         }
-        return export
+        return recovered
     }
 }

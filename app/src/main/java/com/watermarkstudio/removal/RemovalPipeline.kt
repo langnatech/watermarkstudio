@@ -3,9 +3,6 @@ package com.watermarkstudio.removal
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -36,10 +33,8 @@ object RemovalPipeline {
                     ImageRemovalEngine.removeRegion(context, item.uri, config, maxDim, quality)
                         ?: return@withContext null
                 progress?.report(1f)
-                val finalBitmap = if (isPremium) bitmap else drawImageTrial(bitmap)
-                saveBitmapToGallery(context, finalBitmap, "wm_remove_${System.currentTimeMillis()}.jpg").also {
-                    if (finalBitmap != bitmap) bitmap.recycle()
-                    finalBitmap.recycle()
+                saveBitmapToGallery(context, bitmap, "wm_remove_${System.currentTimeMillis()}.jpg").also {
+                    bitmap.recycle()
                 }
             }
             MediaType.VIDEO -> {
@@ -58,21 +53,6 @@ object RemovalPipeline {
                 )
             }
         }
-    }
-
-    private fun drawImageTrial(bitmap: Bitmap): Bitmap {
-        val out = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = Canvas(out)
-        val paint =
-            Paint().apply {
-                color = Color.RED
-                alpha = 150
-                textSize = out.width * 0.035f
-                isAntiAlias = true
-                textAlign = Paint.Align.RIGHT
-            }
-        canvas.drawText("App Free Trial Watermark", out.width - 20f, out.height - 25f, paint)
-        return out
     }
 
     private fun saveBitmapToGallery(context: Context, bitmap: Bitmap, filename: String): Uri? {

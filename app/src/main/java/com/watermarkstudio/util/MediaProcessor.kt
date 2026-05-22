@@ -114,19 +114,6 @@ object MediaProcessor {
                     }
                 }
 
-                if (!isPremium) {
-                    val trialPaint = Paint().apply {
-                        color = Color.RED
-                        alpha = 150
-                        textSize = bitmap.width * 0.035f
-                        isAntiAlias = true
-                        textAlign = Paint.Align.RIGHT
-                    }
-                    val xPos = bitmap.width - 20f
-                    val yPos = bitmap.height - 25f
-                    canvas.drawText("App Free Trial Watermark", xPos, yPos, trialPaint)
-                }
-
                 val savedUri = saveBitmapToGallery(context, bitmap, "wm_${System.currentTimeMillis()}.jpg")
                 bitmap.recycle()
                 savedUri
@@ -244,33 +231,6 @@ object MediaProcessor {
                     }
                     else -> {}
                 }
-            }
-
-            if (!isPremium) {
-                // Add a trial watermark text overlay
-                val paint = Paint().apply {
-                    color = Color.RED
-                    textSize = 48f
-                    isAntiAlias = true
-                }
-                val trialText = "Free Trial App"
-                val textWidth = paint.measureText(trialText).toInt() + 20
-                val textHeight = 80
-                val textBitmap = Bitmap.createBitmap(textWidth, textHeight, Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(textBitmap)
-                canvas.drawText(trialText, 10f, 60f, paint)
-
-                val trialOverlay = BitmapOverlay.createStaticBitmapOverlay(
-                    textBitmap,
-                    OverlaySettings.Builder()
-                        .setAlphaScale(0.7f)
-                        .setScale(0.18f, 0.18f)
-                        .setOverlayFrameAnchor(0f, 0f)
-                        .setBackgroundFrameAnchor(-0.85f, -0.85f) // bottom-left
-                        .build()
-                )
-                overlays.add(trialOverlay)
-                bitmapsToRecycle.add(textBitmap)
             }
 
             val overlayEffect = OverlayEffect(com.google.common.collect.ImmutableList.copyOf(overlays))
