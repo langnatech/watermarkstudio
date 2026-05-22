@@ -18,6 +18,10 @@
 -keep class androidx.media3.** { *; }
 -dontwarn androidx.media3.**
 
+# FFmpeg-kit (LGPL — see README phase 3c)
+-keep class com.arthenica.ffmpegkit.** { *; }
+-dontwarn com.arthenica.ffmpegkit.**
+
 # Kotlin Coroutines
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}

@@ -31,20 +31,15 @@ object StreamingVideoRemovalEngine {
         progress: RemovalProgress?,
         drawTrialBadge: (Bitmap) -> Bitmap,
     ): StreamingResult? {
+        val preferMediaCodec = quality == RemovalQuality.ADVANCED
         val source =
-            try {
-                RetrieverVideoFrameSource(
-                    context,
-                    uri,
-                    sampling.clipDurationMs,
-                    maxDimension,
-                    sampling.targetFps,
-                    sampling.maxFrames,
-                )
-            } catch (e: Exception) {
-                e.printStackTrace()
-                return null
-            }
+            VideoFrameSourceFactory.open(
+                context,
+                uri,
+                sampling,
+                maxDimension,
+                preferMediaCodec,
+            ) ?: return null
 
         val flowAlgorithm =
             if (quality == RemovalQuality.ADVANCED) {
@@ -57,9 +52,11 @@ object StreamingVideoRemovalEngine {
         var prev: Bitmap? = null
         var curr: Bitmap? = null
         var frameCount = 0
+        var outputFps = sampling.targetFps.toFloat()
 
         try {
             source.use { src ->
+                outputFps = src.fps
                 curr = src.nextFrame() ?: return null
                 val encoder =
                     IncrementalVideoEncoder(silentOutputFile, curr!!.width, curr!!.height, src.fps)
@@ -102,7 +99,7 @@ object StreamingVideoRemovalEngine {
             }
             if (frameCount == 0) return null
             progress?.report(0.75f)
-            return StreamingResult(silentOutputFile, frameCount, source.fps)
+            return StreamingResult(silentOutputFile, frameCount, outputFps)
         } catch (e: Exception) {
             e.printStackTrace()
             prev?.recycle()

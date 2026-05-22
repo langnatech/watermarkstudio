@@ -114,6 +114,11 @@ android {
     buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
+  packaging {
+    jniLibs {
+      pickFirsts += "**/libc++_shared.so"
+    }
+  }
 }
 
 gradle.taskGraph.whenReady {
@@ -203,6 +208,7 @@ dependencies {
   implementation(libs.android.billing.ktx)
   implementation(libs.androidx.fragment)
   implementation(libs.opencv)
+  implementation(libs.ffmpeg.kit.lib)
   // "ksp"(libs.androidx.room.compiler)
   // "ksp"(libs.moshi.kotlin.codegen)
 }

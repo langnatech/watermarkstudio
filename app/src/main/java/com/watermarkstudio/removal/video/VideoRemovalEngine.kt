@@ -120,7 +120,7 @@ object VideoRemovalEngine {
         outputFile: File,
     ): Boolean {
         if (
-            RemovalVideoRemuxer.muxVideoWithSourceAudio(
+            RemovalAudioExporter.muxWithSourceAudio(
                 context,
                 streamResult.silentFile,
                 sourceUri,
@@ -130,13 +130,7 @@ object VideoRemovalEngine {
         ) {
             return true
         }
-        return try {
-            streamResult.silentFile.copyTo(outputFile, overwrite = true)
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
-        }
+        return RemovalAudioExporter.copySilentVideo(streamResult.silentFile, outputFile)
     }
 
     /** Fallback batch path when streaming decode fails. */
@@ -226,7 +220,7 @@ object VideoRemovalEngine {
             val silentFile = File(context.cacheDir, "remove_silent_${System.currentTimeMillis()}.mp4")
             if (SlideshowVideoEncoder.encode(withTrial, decoded.fps, silentFile)) {
                 exported =
-                    RemovalVideoRemuxer.muxVideoWithSourceAudio(
+                    RemovalAudioExporter.muxWithSourceAudio(
                         context,
                         silentFile,
                         uri,
