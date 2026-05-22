@@ -9,8 +9,8 @@
 
     <!-- IMPORTANT: Replace these URLs with your REAL privacy policy and terms of service pages.
          Google Play requires a valid privacy policy URL for all apps with subscriptions/ads. -->
-    <string name="privacy_policy_url">https://yourdomain.com/privacy-policy</string>
-    <string name="terms_of_service_url">https://yourdomain.com/terms-of-service</string>
+    <string name="privacy_policy_url">https://langnatech.github.io/watermarkstudio/privacy-policy.html</string>
+    <string name="terms_of_service_url">https://langnatech.github.io/watermarkstudio/terms-of-service.html</string>
 
     <!-- General / Top Bar -->
     <string name="tab_editor">Editor</string>
