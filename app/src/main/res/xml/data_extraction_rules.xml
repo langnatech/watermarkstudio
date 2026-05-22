@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Exclude premium status and usage counters from cloud backup to prevent tampering/restoration abuse -->
+        <exclude domain="sharedpref" path="watermark_prefs.xml" />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="watermark_prefs.xml" />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

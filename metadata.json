@@ -1,0 +1,6 @@
+{
+  "name": "Watermark Studio",
+  "description": "Professional tool for adding and removing watermarks from images and videos with batch processing support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

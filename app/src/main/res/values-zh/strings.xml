@@ -1,0 +1,107 @@
+<resources>
+    <string name="app_name">水印工作室</string>
+    <!-- General / Top Bar -->
+    <string name="tab_editor">编辑器</string>
+    <string name="tab_library">媒体库</string>
+    <string name="app_display_name">水印工作室</string>
+    <string name="engine_subtitle">多线程批量引擎</string>
+    <string name="royal_save_60">立省 60%</string>
+    
+    <!-- HomeScreen -->
+    <string name="upgrade_pro_banner">升级进入 Pro 专业版</string>
+    <string name="upgrade_pro_banner_features">解锁智能视频消除 • 全文本图章 • 无时间长限制</string>
+    <string name="developer_lifetime_active_label">开发者终身 Premium 订阅已激活 👑</string>
+    <string name="btn_add_watermark">添加水印</string>
+    <string name="btn_remove_stamp">消除水印</string>
+    <string name="tap_to_add_batch_media">点击添加批量媒体</string>
+    <string name="choose_media_to_remove_stamp">选择需要消除图章的媒体</string>
+    <string name="uhd_format_support_desc">支持批量超清视频、个性图章以及高级水印参数设置</string>
+    <string name="studio_console_label">工作台控制面板</string>
+    <string name="title_quick_actions">快捷导航</string>
+    <string name="action_text">文字图章</string>
+    <string name="action_logo">本地徽标</string>
+    <string name="action_multilayer">多层叠加</string>
+    
+    <!-- Library -->
+    <string name="no_processed_files_yet_title">暂无已处理的文件</string>
+    <string name="no_processed_files_yet_desc">一旦为图片或视频完成水印生成/消除，处理后的成果将自动在此列出。</string>
+    <string name="btn_launch_studio_console">启动生成工作台</string>
+    <string name="processed_library_title">我的已处理媒体库</string>
+    <string name="processed_library_desc_format">%1$d 个成功处理的成果已保存到系统相册中。</string>
+    <string name="format_ultra_hd_video">超清 MP4 视频</string>
+    <string name="format_high_res_image">高清 JPEG 图片</string>
+    <string name="toast_no_app_format">未能在手机中发现支持此文件类型的本地应用。</string>
+    <string name="toast_failed_share">分享媒体文件失败。</string>
+
+    <!-- EditorScreen -->
+    <string name="dialog_premium_title">专业版功能</string>
+    <string name="btn_view_plans">查看订阅方案</string>
+    <string name="btn_cancel">取消</string>
+    <string name="snackbar_process_success">所有选中的媒体已经完成处理并被保存到手机相册中！</string>
+    <string name="dialog_video_limit_desc">处理超长视频（30秒或原始完整长度）是 Pro 会员专享功能。请升级以彻底移除限制！</string>
+    <string name="dialog_free_exports_exhausted_desc">您已用完每日 3 次的免费导出权限。升级到 Pro 尊享限制全免、去官方红字水印和纯净无广告体验！</string>
+    <string name="parameter_controls_header">属性参数调节</string>
+    <string name="select_media_begin">请点击上方选择媒体开始</string>
+    <string name="btn_process_export">执行批量转换并导出</string>
+    <string name="viewfinder_badg_format">监视预览器 [1 / %1$d]</string>
+    <string name="cut_duration_badge">被裁剪</string>
+    <string name="free_exports_format">今日免费额度剩: %1$d / %2$d</string>
+    <string name="upgrade_arrow_btn">立即升级 ➔</string>
+    <string name="console_workspace_sub">数字水印多轨道控制面板</string>
+    <string name="watermark_configs_lbl">数字水印列表</string>
+    <string name="pos_layout_header">位置与排版布局</string>
+    <string name="x_offset_pct_format">横向偏移量 (%1$d%%)</string>
+    <string name="y_offset_pct_format">纵向偏移量 (%1$d%%)</string>
+    <string name="size_scale_format">水印尺寸比例 (%1$.1fx)</string>
+    <string name="opacity_pct_format">水印不透明度 (%1$d%%)</string>
+    <string name="text_style_lbl">文本图章编辑</string>
+    <string name="hint_enter_watermark">请输入需要叠加的文字...</string>
+    <string name="video_export_duration_lbl">视频导出时长设置</string>
+    <string name="video_restricted_duration_desc">普通免费用户单次视频仅支持前 15s。超级专业会员不限时间长度</string>
+    <string name="watermark_removed_snack">该水印图层已移除。</string>
+    <string name="remove_watermark_header">消除图章水印</string>
+    
+    <!-- SubscriptionScreen -->
+    <string name="subscription_top_title">水印专业版 PRO</string>
+    <string name="privilege_header">激活全部专业特权</string>
+    <string name="privilege_subheader">助您以专业级的生产力执行视频/图片水印叠加、清除、转换，零约束完成每一次作品产出。</string>
+    <string name="choose_pro_plan">选择适合您的订阅方案</string>
+    <string name="btn_start_trial">开启 3 天免费试用</string>
+    <string name="btn_subscribe_now">立即订阅激活</string>
+    <string name="btn_restore_purchase">恢复我已购买的权限</string>
+    <string name="btn_terms_service">服务协议条款</string>
+    <string name="btn_privacy_policy">个人隐私政策</string>
+    <string name="subscription_autorenew_disclaimer">除非在当前周期结束前至少 24 小时在 Google Play 配置的订阅账户中关闭自动续订，否则订阅将自动扣款延续。</string>
+    <string name="dialog_congrats_title">热烈祝贺！</string>
+    <string name="dialog_congrats_desc">您已成功晋升为水印工作室专业会员！欢迎畅享我们无限制的最高级专业创作特权！</string>
+    <string name="btn_lets_start">开启无界探索！</string>
+    <string name="toasting_restoring">正在为您从云端检索购买凭证...</string>
+    <string name="toast_restore_success">权限检索验证完成，Premium 尊享身份已成功为您恢复！</string>
+    <string name="toast_terms_show">服务使用协议条款已呈递显示。</string>
+    <string name="toast_privacy_show">用户隐私保护政策及指南已展示。</string>
+    
+    <!-- Plans -->
+    <string name="plan_weekly_title">按周订阅</string>
+    <string name="plan_weekly_tag">三天免费试用</string>
+    <string name="plan_weekly_desc">零门槛体验全套 Pro 权益</string>
+    <string name="plan_monthly_title">月度专业版</string>
+    <string name="plan_monthly_tag">立省 30%</string>
+    <string name="plan_monthly_desc">最多用户推荐与选购</string>
+    <string name="plan_yearly_title">年度终极专版</string>
+    <string name="plan_yearly_tag">特省 60%</string>
+    <string name="plan_yearly_desc">折合仅 4.8 元/月</string>
+    <string name="unit_week">周</string>
+    <string name="unit_month">月</string>
+    <string name="unit_year">年</string>
+
+    <!-- Privileges -->
+    <string name="privilege_video_limits_title">5分钟 PRO 长视频转换</string>
+    <string name="privilege_video_limits_desc">支持单次处理长达 5分钟的专业视频，极速导出不卡顿（免费版限制在前 15秒短片）。</string>
+    <string name="privilege_ai_removal_title">高级纯净水印擦除</string>
+    <string name="privilege_ai_removal_desc">无损智能模糊画面中各类台标、剪映logo及多重复杂的文字签名。</string>
+    <string name="privilege_brand_signature_title">移除应用水印尾标</string>
+    <string name="privilege_brand_signature_desc">默认导出的成品文件中将不再附加任何“Free Trial”红字徽章，呈现个人专属内容。</string>
+    <string name="privilege_hd_outputs_title">1080p 全清无损画质</string>
+    <string name="privilege_hd_outputs_desc">完美支持 1080p 物理分辨率超爽解析（免费版为了节省物理渲染内存强制降为 720p 标清分辨率）。</string>
+    <string name="share_media_chooser">分享媒体</string>
+</resources>

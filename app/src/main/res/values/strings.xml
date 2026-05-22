@@ -1,0 +1,119 @@
+<resources>
+    <string name="app_name">Watermark Studio</string>
+
+    <!-- IMPORTANT: Replace these AdMob IDs with your REAL production IDs before release.
+         Using test IDs in production will result in policy violations and zero revenue. -->
+    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>
+    <string name="admob_banner_id">ca-app-pub-3940256099942544/6300978111</string>
+    <string name="admob_interstitial_id">ca-app-pub-3940256099942544/1033173712</string>
+
+    <!-- IMPORTANT: Replace these URLs with your REAL privacy policy and terms of service pages.
+         Google Play requires a valid privacy policy URL for all apps with subscriptions/ads. -->
+    <string name="privacy_policy_url">https://yourdomain.com/privacy-policy</string>
+    <string name="terms_of_service_url">https://yourdomain.com/terms-of-service</string>
+
+    <!-- General / Top Bar -->
+    <string name="tab_editor">Editor</string>
+    <string name="tab_library">Library</string>
+    <string name="app_display_name">Watermark Studio</string>
+    <string name="engine_subtitle">Multi-thread Batch Engine</string>
+    <string name="royal_save_60">SAVE 60%</string>
+    
+    <!-- HomeScreen -->
+    <string name="upgrade_pro_banner">Upgrade to Studio Pro</string>
+    <string name="upgrade_pro_banner_features">Unlock AI Removal • Text stamp tools • No limit video limits</string>
+    <string name="developer_lifetime_active_label">Developer Lifetime Subscription Is Active 👑</string>
+    <string name="btn_add_watermark">Add Watermark</string>
+    <string name="btn_remove_stamp">Remove Stamp</string>
+    <string name="tap_to_add_batch_media">Tap to Add Batch Media</string>
+    <string name="choose_media_to_remove_stamp">Choose Media to Remove Stamp</string>
+    <string name="uhd_format_support_desc">Supports batches of UHD videos, stamps &amp; watermark configurations</string>
+    <string name="studio_console_label">STUDIO CONSOLE</string>
+    <string name="title_quick_actions">QUICK ACTIONS</string>
+    <string name="action_text">Text</string>
+    <string name="action_logo">Logo</string>
+    <string name="action_multilayer">Multi-Layer</string>
+    
+    <!-- Library -->
+    <string name="no_processed_files_yet_title">No Processed Files Yet</string>
+    <string name="no_processed_files_yet_desc">Your completed work will automatically appear here once watermark stamps are added or removed.</string>
+    <string name="btn_launch_studio_console">Launch Studio Console</string>
+    <string name="processed_library_title">PROCESSED LIBRARY</string>
+    <string name="processed_library_desc_format">%1$d successfully exports saved to system gallery.</string>
+    <string name="format_ultra_hd_video">Ultra HD Video File</string>
+    <string name="format_high_res_image">High-Res Image File</string>
+    <string name="toast_no_app_format">No app available to open this format.</string>
+    <string name="toast_failed_share">Failed to share media.</string>
+
+    <!-- EditorScreen -->
+    <string name="dialog_premium_title">Premium Feature</string>
+    <string name="btn_view_plans">View Plans</string>
+    <string name="btn_cancel">Cancel</string>
+    <string name="snackbar_process_success">All items processed and saved to gallery!</string>
+    <string name="dialog_video_limit_desc">Processing long videos (30s and original/unlimited length) is a Pro premium feature. Please upgrade to remove video duration limits entirely!</string>
+    <string name="dialog_free_exports_exhausted_desc">You have exhausted your 3 free daily exports. Upgrade to Pro for unlimited exports, removed duration limits, watermark-free results, and zero ads!</string>
+    <string name="parameter_controls_header">PARAMETER CONTROLS</string>
+    <string name="select_media_begin">Select Media to Begin</string>
+    <string name="btn_process_export">Process &amp; Export</string>
+    <string name="viewfinder_badg_format">CONV_VIEWFINDER [1 / %1$d]</string>
+    <string name="cut_duration_badge">Cut</string>
+    <string name="free_exports_format">Free Exports Today: %1$d / %2$d</string>
+    <string name="upgrade_arrow_btn">Upgrade ➔</string>
+    <string name="console_workspace_sub">Studio Console Workspace</string>
+    <string name="watermark_configs_lbl">WATERMARK CONFIGS</string>
+    <string name="pos_layout_header">POSITION &amp; LAYOUT</string>
+    <string name="x_offset_pct_format">X Offset (%1$d%%)</string>
+    <string name="y_offset_pct_format">Y Offset (%1$d%%)</string>
+    <string name="size_scale_format">Size Scale (%1$.1fx)</string>
+    <string name="opacity_pct_format">Opacity (%1$d%%)</string>
+    <string name="text_style_lbl">TEXT STYLE &amp; CONFIG</string>
+    <string name="hint_enter_watermark">Enter watermark text</string>
+    <string name="video_export_duration_lbl">VIDEO EXPORT DURATION</string>
+    <string name="video_restricted_duration_desc">Free exports are capped at 15s. Upgrade to Pro to remove limits</string>
+    <string name="watermark_removed_snack">Watermark removed.</string>
+    <string name="remove_watermark_header">Remove Watermark</string>
+    
+    <!-- SubscriptionScreen -->
+    <string name="subscription_top_title">WATERMARK PRO</string>
+    <string name="privilege_header">Unlock Premium Potential</string>
+    <string name="privilege_subheader">Elevate your watermarking and media processing to professional standards without any constraints.</string>
+    <string name="choose_pro_plan">CHOOSE A PRO PLAN</string>
+    <string name="btn_start_trial">Start 3-Day Free Trial</string>
+    <string name="btn_subscribe_now">Subscribe Now</string>
+    <string name="btn_restore_purchase">Restore Purchase</string>
+    <string name="btn_terms_service">Terms of Service</string>
+    <string name="btn_privacy_policy">Privacy Policy</string>
+    <string name="subscription_autorenew_disclaimer">Subscription automatically renews unless turned off in Google Play account settings at least 24 hours before the end of the current period.</string>
+    <string name="dialog_congrats_title">Congratulations!</string>
+    <string name="dialog_congrats_desc">You are now a premium member of Watermark Studio Pro. Enjoy all unlimited privileges!</string>
+    <string name="btn_lets_start">Let\'s Start!</string>
+    <string name="toasting_restoring">Restoring purchases...</string>
+    <string name="toast_restore_success">Premium status restored successfully!</string>
+    <string name="toast_terms_show">Terms of service displayed.</string>
+    <string name="toast_privacy_show">Privacy policy displayed.</string>
+    
+    <!-- Plans -->
+    <string name="plan_weekly_title">Weekly Access</string>
+    <string name="plan_weekly_tag">3-Day Free Trial</string>
+    <string name="plan_weekly_desc">Experience all features</string>
+    <string name="plan_monthly_title">Monthly Pro</string>
+    <string name="plan_monthly_tag">Save 30%</string>
+    <string name="plan_monthly_desc">Highly Recommended</string>
+    <string name="plan_yearly_title">Yearly Ultimate</string>
+    <string name="plan_yearly_tag">Save 60%</string>
+    <string name="plan_yearly_desc">Only $4.8/month</string>
+    <string name="unit_week">week</string>
+    <string name="unit_month">month</string>
+    <string name="unit_year">year</string>
+
+    <!-- Privileges -->
+    <string name="privilege_video_limits_title">5-Minute PRO Video Exports</string>
+    <string name="privilege_video_limits_desc">Unlock long video processing up to 5 minutes at ultra fast speed (Free is capped at 15s).</string>
+    <string name="privilege_ai_removal_title">Advanced Watermark Removal</string>
+    <string name="privilege_ai_removal_desc">Restore clarity of photos &amp; videos with AI-powered logo removing tool.</string>
+    <string name="privilege_brand_signature_title">No App watermark credits</string>
+    <string name="privilege_brand_signature_desc">Remove the automatic bottom-right app signature for standard outputs.</string>
+    <string name="privilege_hd_outputs_title">1080p Full HD Resolution</string>
+    <string name="privilege_hd_outputs_desc">Maintain crystal-clear 1080p HD outputs (Free is capped at 720p to save processing memory).</string>
+    <string name="share_media_chooser">Share Media</string>
+</resources>

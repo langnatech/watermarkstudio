@@ -1,0 +1,121 @@
+:root {
+  --text: #1a1a1a;
+  --muted: #555;
+  --border: #e5e5e5;
+  --accent: #1a73e8;
+  --zh-bg: #f8fafc;
+  --en-bg: #faf8f5;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.75;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
+  color: var(--text);
+}
+
+header.site-header {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+header.site-header h1 {
+  font-size: 1.6rem;
+  margin: 0 0 0.35rem;
+}
+
+.lang-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 0.75rem;
+}
+
+.lang-nav a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.lang-nav a:hover { text-decoration: underline; }
+
+.meta { color: var(--muted); font-size: 0.85rem; margin: 0; }
+
+.doc-links { margin-top: 0.75rem; font-size: 0.9rem; }
+.doc-links a { color: var(--accent); margin-right: 1rem; }
+
+section.lang-block {
+  margin-top: 2.5rem;
+  scroll-margin-top: 1rem;
+}
+
+section.lang-block > h2 {
+  font-size: 1.15rem;
+  margin: 0 0 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--border);
+}
+
+.bilingual-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .bilingual-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+  }
+}
+
+.lang-card {
+  padding: 1rem 1.1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.lang-card.zh { background: var(--zh-bg); }
+.lang-card.en { background: var(--en-bg); }
+
+.lang-label {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+.lang-card h3 {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.lang-card p,
+.lang-card li {
+  font-size: 0.92rem;
+  margin: 0.4rem 0;
+}
+
+.lang-card ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+a { color: var(--accent); }
+code { font-size: 0.88em; background: #eee; padding: 0.1em 0.35em; border-radius: 4px; }
+
+footer {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--muted);
+}

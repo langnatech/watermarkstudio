@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Exclude premium status and usage counters from auto-backup to prevent tampering/restoration abuse -->
+    <exclude domain="sharedpref" path="watermark_prefs.xml" />
+    <exclude domain="external" path="." />
+</full-backup-content>
