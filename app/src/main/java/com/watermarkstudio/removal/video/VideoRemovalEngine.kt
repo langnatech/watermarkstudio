@@ -47,6 +47,112 @@ object VideoRemovalEngine {
         }
 
         report(0f, 0.35f, 0f)
+        val silentFile = File(context.cacheDir, "remove_stream_${System.currentTimeMillis()}.mp4")
+        val streamResult =
+            StreamingVideoRemovalEngine.process(
+                context,
+                uri,
+                config,
+                sampling,
+                maxDimension,
+                isPremium,
+                quality,
+                silentFile,
+                progress,
+                ::drawTrialBadge,
+            )
+        report(0f, 0.75f, 1f)
+
+        if (streamResult == null) {
+            silentFile.delete()
+            return@withContext removeRegionBatch(
+                context,
+                uri,
+                config,
+                sampling,
+                maxDimension,
+                isPremium,
+                quality,
+                progress,
+            )
+        }
+
+        val tempFile = File(context.cacheDir, "remove_${System.currentTimeMillis()}.mp4")
+        val videoDurationUs =
+            VideoRemovalLimits.videoDurationUs(streamResult.frameCount, streamResult.fps)
+        var exported =
+            when (quality) {
+                RemovalQuality.ADVANCED ->
+                    exportAdvancedWithAudio(
+                        context,
+                        uri,
+                        streamResult,
+                        videoDurationUs,
+                        sampling.clipDurationMs,
+                        tempFile,
+                    )
+                RemovalQuality.STANDARD -> {
+                    try {
+                        streamResult.silentFile.copyTo(tempFile, overwrite = true)
+                        true
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        false
+                    }
+                }
+            }
+        if (!exported) {
+            silentFile.delete()
+            tempFile.delete()
+            return@withContext null
+        }
+        silentFile.delete()
+        report(1f, 1f, 1f)
+        saveVideoToGallery(context, tempFile)
+    }
+
+    private suspend fun exportAdvancedWithAudio(
+        context: Context,
+        sourceUri: Uri,
+        streamResult: StreamingVideoRemovalEngine.StreamingResult,
+        @Suppress("UNUSED_PARAMETER") videoDurationUs: Long,
+        clipDurationMs: Long,
+        outputFile: File,
+    ): Boolean {
+        if (
+            RemovalVideoRemuxer.muxVideoWithSourceAudio(
+                context,
+                streamResult.silentFile,
+                sourceUri,
+                outputFile,
+                clipDurationMs,
+            )
+        ) {
+            return true
+        }
+        return try {
+            streamResult.silentFile.copyTo(outputFile, overwrite = true)
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /** Fallback batch path when streaming decode fails. */
+    private suspend fun removeRegionBatch(
+        context: Context,
+        uri: Uri,
+        config: WatermarkConfig,
+        sampling: VideoRemovalLimits.SamplingPlan,
+        maxDimension: Int,
+        isPremium: Boolean,
+        quality: RemovalQuality,
+        progress: RemovalProgress?,
+    ): Uri? {
+        fun report(stageStart: Float, stageEnd: Float, fraction: Float) {
+            progress?.report(stageStart + (stageEnd - stageStart) * fraction.coerceIn(0f, 1f))
+        }
         val decoded =
             if (quality == RemovalQuality.ADVANCED) {
                 MediaCodecFrameDecoder.decode(
@@ -71,18 +177,11 @@ object VideoRemovalEngine {
                             fps = ext.fps,
                             width = ext.width,
                             height = ext.height,
-                            clipDurationUs =
-                                if (maxDurationMs > 0L) {
-                                    maxDurationMs * 1000L
-                                } else {
-                                    (ext.bitmaps.size * 1_000_000L / ext.fps.toInt().coerceAtLeast(1))
-                                },
+                            clipDurationUs = sampling.clipDurationMs * 1000L,
                         )
                     }
-            } ?: return@withContext null
-        report(0f, 0.35f, 1f)
+            } ?: return null
 
-        report(0.35f, 0.75f, 0f)
         val recovered =
             when (quality) {
                 RemovalQuality.ADVANCED ->
@@ -90,19 +189,12 @@ object VideoRemovalEngine {
                 RemovalQuality.STANDARD ->
                     TemporalMedianProcessor.apply(decoded.bitmaps, config)
             }
-        report(0.35f, 0.75f, 0.5f)
-
         val blended =
             if (quality == RemovalQuality.ADVANCED) {
-                recovered.mapIndexed { index, frame ->
-                    report(0.35f, 0.75f, 0.5f + 0.5f * (index + 1) / recovered.size.coerceAtLeast(1))
-                    FrameInpaintBlender.blendFrame(frame, config, quality)
-                }
+                recovered.map { FrameInpaintBlender.blendFrame(it, config, quality) }
             } else {
                 recovered
             }
-        report(0.35f, 0.75f, 1f)
-
         val withTrial =
             if (isPremium) {
                 blended
@@ -113,10 +205,7 @@ object VideoRemovalEngine {
                     badged
                 }
             }
-
         val videoDurationUs = VideoRemovalLimits.videoDurationUs(withTrial.size, decoded.fps)
-
-        report(0.75f, 1f, 0f)
         val tempFile = File(context.cacheDir, "remove_${System.currentTimeMillis()}.mp4")
         var exported =
             when (quality) {
@@ -151,12 +240,11 @@ object VideoRemovalEngine {
             }
         }
         withTrial.forEach { if (!it.isRecycled) it.recycle() }
-        report(0.75f, 1f, 1f)
         if (!exported) {
             tempFile.delete()
-            return@withContext null
+            return null
         }
-        saveVideoToGallery(context, tempFile)
+        return saveVideoToGallery(context, tempFile)
     }
 
     private fun drawTrialBadge(source: Bitmap): Bitmap {

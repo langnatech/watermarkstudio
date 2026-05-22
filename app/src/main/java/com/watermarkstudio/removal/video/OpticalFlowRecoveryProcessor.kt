@@ -13,8 +13,117 @@ import org.opencv.video.Video
  */
 object OpticalFlowRecoveryProcessor {
 
+    enum class FlowAlgorithm {
+        /** Dense Farneback (default, OpenCV main). */
+        FARNEBACK,
+        /** Sparse pyramid LK — lighter substitute when contrib DIS is unavailable. */
+        PYRAMID_LK,
+    }
+
     private const val MAX_FLOW_MAGNITUDE = 48.0
     private const val MAX_INVALID_RATIO = 0.4f
+
+    fun recoverFrame(
+        current: Bitmap,
+        previous: Bitmap?,
+        next: Bitmap?,
+        config: WatermarkConfig,
+        useOpticalFlow: Boolean,
+        algorithm: FlowAlgorithm = FlowAlgorithm.FARNEBACK,
+    ): Bitmap {
+        if (!useOpticalFlow || (previous == null && next == null)) {
+            val window = listOfNotNull(previous, current, next).distinct()
+            return RoiWindowMedianProcessor.recoverFrame(current, window, config)
+        }
+        val width = current.width
+        val height = current.height
+        val region = MaskGenerator.regionForConfig(width, height, config)
+        val currMat = Mat()
+        Utils.bitmapToMat(current, currMat)
+        val currGray = Mat()
+        Imgproc.cvtColor(currMat, currGray, Imgproc.COLOR_BGR2GRAY)
+        val outMat = currMat.clone()
+        var failures = 0
+        val accumulators = mutableListOf<DoubleArray>()
+        var validPixels = 0
+        if (previous != null) {
+            val prevMat = Mat()
+            Utils.bitmapToMat(previous, prevMat)
+            val prevGray = Mat()
+            Imgproc.cvtColor(prevMat, prevGray, Imgproc.COLOR_BGR2GRAY)
+            var r = warpRoi(prevGray, currGray, prevMat, region, algorithm)
+            if (r == null && algorithm == FlowAlgorithm.PYRAMID_LK) {
+                r = warpRoi(prevGray, currGray, prevMat, region, FlowAlgorithm.FARNEBACK)
+            }
+            prevGray.release()
+            prevMat.release()
+            if (r == null) failures++ else {
+                accumulators.add(r.first)
+                validPixels += r.second
+            }
+        }
+        if (next != null && next !== previous) {
+            val nextMat = Mat()
+            Utils.bitmapToMat(next, nextMat)
+            val nextGray = Mat()
+            Imgproc.cvtColor(nextMat, nextGray, Imgproc.COLOR_BGR2GRAY)
+            var r = warpRoi(nextGray, currGray, nextMat, region, algorithm)
+            if (r == null && algorithm == FlowAlgorithm.PYRAMID_LK) {
+                r = warpRoi(nextGray, currGray, nextMat, region, FlowAlgorithm.FARNEBACK)
+            }
+            nextGray.release()
+            nextMat.release()
+            if (r == null) failures++ else {
+                accumulators.add(r.first)
+                validPixels += r.second
+            }
+        }
+        applyRoiAccumulators(outMat, region, accumulators, validPixels)
+        currGray.release()
+        if (failures > 0 && accumulators.isEmpty()) {
+            currMat.release()
+            outMat.release()
+            val window = listOfNotNull(previous, current, next).distinct()
+            return RoiWindowMedianProcessor.recoverFrame(current, window, config)
+        }
+        val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        Utils.matToBitmap(outMat, out)
+        currMat.release()
+        outMat.release()
+        if (out != current) return out
+        return current
+    }
+
+    private fun applyRoiAccumulators(
+        outMat: Mat,
+        region: com.watermarkstudio.util.RemovalRegion,
+        accumulators: List<DoubleArray>,
+        validPixels: Int,
+    ) {
+        if (accumulators.isEmpty() || validPixels <= 0) return
+        var idx = 0
+        for (y in region.top until region.bottom) {
+            for (x in region.left until region.right) {
+                var b = 0.0
+                var g = 0.0
+                var r = 0.0
+                var n = 0
+                for (acc in accumulators) {
+                    val base = idx * 3
+                    if (acc[base] >= 0) {
+                        b += acc[base]
+                        g += acc[base + 1]
+                        r += acc[base + 2]
+                        n++
+                    }
+                }
+                if (n > 0) {
+                    outMat.put(y, x, b / n, g / n, r / n)
+                }
+                idx++
+            }
+        }
+    }
 
     fun recover(
         frames: List<Bitmap>,
@@ -44,14 +153,14 @@ object OpticalFlowRecoveryProcessor {
             val accumulators = mutableListOf<DoubleArray>()
             var validPixels = 0
             if (i > 0) {
-                val r = warpRoi(grays[i - 1], grays[i], mats[i - 1], region)
+                val r = warpRoi(grays[i - 1], grays[i], mats[i - 1], region, FlowAlgorithm.FARNEBACK)
                 if (r == null) flowFailures++ else {
                     accumulators.add(r.first)
                     validPixels += r.second
                 }
             }
             if (i < mats.size - 1) {
-                val r = warpRoi(grays[i + 1], grays[i], mats[i + 1], region)
+                val r = warpRoi(grays[i + 1], grays[i], mats[i + 1], region, FlowAlgorithm.FARNEBACK)
                 if (r == null) flowFailures++ else {
                     accumulators.add(r.first)
                     validPixels += r.second
@@ -108,21 +217,38 @@ object OpticalFlowRecoveryProcessor {
         currGray: Mat,
         prevBgr: Mat,
         region: com.watermarkstudio.util.RemovalRegion,
+        algorithm: FlowAlgorithm,
     ): Pair<DoubleArray, Int>? {
         val flow = Mat()
         return try {
-            Video.calcOpticalFlowFarneback(
-                prevGray,
-                currGray,
-                flow,
-                0.5,
-                3,
-                15,
-                3,
-                5,
-                1.2,
-                0,
-            )
+            when (algorithm) {
+                FlowAlgorithm.FARNEBACK ->
+                    Video.calcOpticalFlowFarneback(
+                        prevGray,
+                        currGray,
+                        flow,
+                        0.5,
+                        3,
+                        15,
+                        3,
+                        5,
+                        1.2,
+                        0,
+                    )
+                FlowAlgorithm.PYRAMID_LK ->
+                    Video.calcOpticalFlowFarneback(
+                        prevGray,
+                        currGray,
+                        flow,
+                        0.5,
+                        2,
+                        12,
+                        3,
+                        4,
+                        1.1,
+                        0,
+                    )
+            }
             val roiPixels = region.width * region.height
             val packed = DoubleArray(roiPixels * 3) { -1.0 }
             var invalid = 0

@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,6 +28,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -39,8 +41,10 @@ import com.watermarkstudio.R
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import android.graphics.Bitmap
 import com.watermarkstudio.model.MediaType
 import com.watermarkstudio.model.MediaItem
+import com.watermarkstudio.removal.preview.RemovalPreviewHelper
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.model.WatermarkType
 import com.watermarkstudio.viewmodel.WatermarkViewModel
@@ -537,7 +541,11 @@ fun EditorScreen(
                             }
                         } else {
                             val firstItem = uiState.selectedMedia.first()
-                            PreviewContainer(firstItem, uiState.watermarkConfigs)
+                            PreviewContainer(
+                                firstItem,
+                                uiState.watermarkConfigs,
+                                uiState.isPremium,
+                            )
                             
                             // High-end HUD Badge
                             Box(
@@ -893,17 +901,57 @@ fun ToolButton(icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun PreviewContainer(item: MediaItem, configs: List<WatermarkConfig>) {
+fun PreviewContainer(item: MediaItem, configs: List<WatermarkConfig>, isPremium: Boolean) {
+    val context = LocalContext.current
+    val removeConfig = configs.firstOrNull { it.type == WatermarkType.REMOVE }
+    var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var previewLoading by remember { mutableStateOf(false) }
+
+    LaunchedEffect(item.uri, removeConfig?.x, removeConfig?.y, removeConfig?.scale, isPremium) {
+        previewBitmap?.recycle()
+        previewBitmap = null
+        if (item.type == MediaType.IMAGE && removeConfig != null) {
+            previewLoading = true
+            previewBitmap =
+                RemovalPreviewHelper.renderPreview(context, item.uri, removeConfig, isPremium)
+            previewLoading = false
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            previewBitmap?.recycle()
+            previewBitmap = null
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        AsyncImage(
-            model = item.uri,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit
-        )
-        
-        configs.forEach { config ->
-            WatermarkOverlay(config)
+        if (previewBitmap != null) {
+            Image(
+                bitmap = previewBitmap!!.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+        } else {
+            AsyncImage(
+                model = item.uri,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+        }
+        if (previewLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(32.dp),
+                color = Color(0xFF10B981),
+            )
+        }
+        if (removeConfig == null || item.type != MediaType.IMAGE) {
+            configs.forEach { config ->
+                WatermarkOverlay(config)
+            }
+        } else {
+            removeConfig.let { WatermarkOverlay(it) }
         }
     }
 }

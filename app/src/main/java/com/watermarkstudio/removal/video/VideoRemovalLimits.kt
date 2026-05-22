@@ -40,8 +40,8 @@ object VideoRemovalLimits {
 
     fun videoDurationUs(frameCount: Int, fps: Float): Long {
         if (frameCount <= 0) return 0L
-        val frameUs = (1_000_000f / fps.coerceAtLeast(1f)).toLong()
-        return frameCount * frameUs
+        val fpsInt = fps.coerceAtLeast(1f).toInt()
+        return frameCount * 1_000_000L / fpsInt
     }
 
     private fun frameCountFor(durationMs: Long, fps: Int): Int {
