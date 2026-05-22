@@ -4,6 +4,10 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.watermarkstudio.R
+import com.watermarkstudio.billing.BillingProducts
+import com.watermarkstudio.util.BillingUiEvent
+import com.watermarkstudio.util.RestorePurchaseResult
 import com.watermarkstudio.model.MediaItem
 import com.watermarkstudio.model.MediaType
 import com.watermarkstudio.model.WatermarkConfig
@@ -27,7 +31,9 @@ data class UiState(
     val maxVideoDurationSec: Int = 15,
     val isPremium: Boolean = false,
     val freeExportsUsedToday: Int = 0,
-    val maxFreeExportsPerDay: Int = 3
+    val maxFreeExportsPerDay: Int = 3,
+    /** Non-zero after a successful batch export; UI handles once then clears via [WatermarkViewModel.clearExportSuccessEvent]. */
+    val exportSuccessBatchId: Long = 0L,
 )
 
 class WatermarkViewModel : ViewModel() {
@@ -49,6 +55,12 @@ class WatermarkViewModel : ViewModel() {
     val purchaseFlowFinishedEvent: StateFlow<Boolean>
         get() = billingManager?.purchaseFlowFinishedEvent ?: MutableStateFlow(false)
 
+    val billingUiEvent: StateFlow<BillingUiEvent?>
+        get() = billingManager?.billingUiEvent ?: MutableStateFlow(null)
+
+    val restorePurchaseResult: StateFlow<RestorePurchaseResult?>
+        get() = billingManager?.restorePurchaseResult ?: MutableStateFlow(null)
+
     fun initializeBilling(context: Context) {
         if (billingManager == null) {
             billingManager = com.watermarkstudio.util.BillingManager(context.applicationContext, viewModelScope) { isPremium ->
@@ -58,13 +70,15 @@ class WatermarkViewModel : ViewModel() {
     }
 
     fun makePurchase(activity: android.app.Activity, planId: String): Boolean {
-        val googleProductId = when (planId) {
-            "weekly" -> "com.watermark.pro.weekly"
-            "monthly" -> "com.watermark.pro.monthly"
-            "yearly" -> "com.watermark.pro.yearly"
-            else -> "com.watermark.pro.monthly"
-        }
-        return billingManager?.launchBillingFlow(activity, googleProductId) ?: false
+        return billingManager?.launchBillingFlow(activity, BillingProducts.planIdToProductId(planId)) ?: false
+    }
+
+    fun clearBillingUiEvent() {
+        billingManager?.clearBillingUiEvent()
+    }
+
+    fun clearRestorePurchaseResult() {
+        billingManager?.clearRestorePurchaseResult()
     }
 
     fun resetPurchaseEvent() {
@@ -76,7 +90,7 @@ class WatermarkViewModel : ViewModel() {
     }
 
     fun restorePurchases() {
-        billingManager?.queryPurchases()
+        billingManager?.queryPurchases(forRestore = true)
     }
 
     fun setPremium(context: Context, status: Boolean) {
@@ -111,15 +125,27 @@ class WatermarkViewModel : ViewModel() {
         }
     }
 
-    fun consumeFreeExport(context: Context): Boolean {
+    fun refreshMaxFreeExports(context: Context) {
+        val max = context.resources.getInteger(R.integer.free_exports_per_day)
+        _uiState.value = _uiState.value.copy(maxFreeExportsPerDay = max)
+    }
+
+    /** Returns whether a free user may start another export (does not consume quota). */
+    fun canStartExport(context: Context): Boolean {
         if (_uiState.value.isPremium) return true
-        
+        checkAndResetDailyLimit(context)
+        refreshMaxFreeExports(context)
+        return _uiState.value.freeExportsUsedToday < _uiState.value.maxFreeExportsPerDay
+    }
+
+    /** Consumes one daily export after a successful batch; call only from [processAll]. */
+    private fun commitFreeExport(context: Context): Boolean {
+        if (_uiState.value.isPremium) return true
         checkAndResetDailyLimit(context)
         val currentUsed = _uiState.value.freeExportsUsedToday
         if (currentUsed >= _uiState.value.maxFreeExportsPerDay) {
             return false
         }
-        
         try {
             val prefs = context.getSharedPreferences("watermark_prefs", Context.MODE_PRIVATE)
             val nextUsed = currentUsed + 1
@@ -127,13 +153,18 @@ class WatermarkViewModel : ViewModel() {
             _uiState.value = _uiState.value.copy(freeExportsUsedToday = nextUsed)
             return true
         } catch (e: Exception) {
-            Log.e("WatermarkVM", "Failed to consume export limit", e)
-            return false // fallback: block export on error to prevent abuse
+            Log.e("WatermarkVM", "Failed to commit export limit", e)
+            return false
         }
+    }
+
+    fun clearExportSuccessEvent() {
+        _uiState.value = _uiState.value.copy(exportSuccessBatchId = 0L)
     }
 
     fun checkPremium(context: Context) {
         initializeBilling(context)
+        refreshMaxFreeExports(context)
         checkAndResetDailyLimit(context)
         try {
             val prefs = context.getSharedPreferences("watermark_prefs", Context.MODE_PRIVATE)
@@ -149,6 +180,107 @@ class WatermarkViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(maxVideoDurationSec = seconds)
     }
 
+    private var pendingImageWatermarkFocus = false
+
+    fun setPendingImageWatermarkFocus(enabled: Boolean) {
+        pendingImageWatermarkFocus = enabled
+    }
+
+    fun consumePendingImageWatermarkFocus(): Boolean {
+        val pending = pendingImageWatermarkFocus
+        pendingImageWatermarkFocus = false
+        return pending
+    }
+
+    /** Resets editor media/watermarks when entering add or remove workflow. */
+    fun resetEditorSession(mode: WatermarkType) {
+        val defaultConfig =
+            if (mode == WatermarkType.REMOVE) {
+                WatermarkConfig(
+                    type = WatermarkType.REMOVE,
+                    opacity = 1f,
+                    x = 50f,
+                    y = 50f,
+                    scale = 1.2f,
+                )
+            } else {
+                WatermarkConfig(WatermarkType.TEXT, text = "Watermark")
+            }
+        _uiState.value = _uiState.value.copy(
+            selectedMedia = emptyList(),
+            watermarkConfigs = listOf(defaultConfig),
+            isProcessing = false,
+            processingProgress = 0f,
+            errorMessage = null,
+            maxVideoDurationSec = 15,
+            processedMediaUris = emptyList(),
+            exportSuccessBatchId = 0L,
+        )
+    }
+
+    private var pendingMultilayer = false
+
+    fun setPendingMultilayer(enabled: Boolean) {
+        pendingMultilayer = enabled
+    }
+
+    fun consumePendingMultilayer(): Boolean {
+        val pending = pendingMultilayer
+        pendingMultilayer = false
+        return pending
+    }
+
+    private var pendingLibraryTab = false
+
+    fun setPendingLibraryTab(enabled: Boolean = true) {
+        pendingLibraryTab = enabled
+    }
+
+    fun consumePendingLibraryTab(): Boolean {
+        val pending = pendingLibraryTab
+        pendingLibraryTab = false
+        return pending
+    }
+
+    private fun resolveMediaType(context: Context, uri: Uri): MediaType {
+        val mime = context.contentResolver.getType(uri)
+        if (mime != null) {
+            if (mime.startsWith("video/")) return MediaType.VIDEO
+            if (mime.startsWith("image/")) return MediaType.IMAGE
+        }
+
+        val path = uri.lastPathSegment?.lowercase().orEmpty()
+        val videoExtensions = listOf(".mp4", ".mkv", ".webm", ".mov", ".3gp", ".avi")
+        if (videoExtensions.any { path.endsWith(it) }) {
+            return MediaType.VIDEO
+        }
+
+        val retriever = android.media.MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, uri)
+            val retrieverMime = retriever.extractMetadata(
+                android.media.MediaMetadataRetriever.METADATA_KEY_MIMETYPE,
+            )
+            when {
+                retrieverMime?.startsWith("video/") == true -> MediaType.VIDEO
+                retrieverMime?.startsWith("image/") == true -> MediaType.IMAGE
+                else -> {
+                    Log.w("WatermarkVM", "Unknown MIME for $uri, defaulting to IMAGE")
+                    MediaType.IMAGE
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("WatermarkVM", "Could not detect media type for $uri, defaulting to IMAGE", e)
+            MediaType.IMAGE
+        } finally {
+            try {
+                retriever.release()
+            } catch (releaseEx: Exception) {
+                Log.e("WatermarkVM", "Error releasing retriever", releaseEx)
+            }
+        }
+    }
+
     fun addMedia(items: List<MediaItem>) {
         _uiState.value = _uiState.value.copy(
             selectedMedia = _uiState.value.selectedMedia + items
@@ -156,13 +288,10 @@ class WatermarkViewModel : ViewModel() {
     }
 
     fun addMediaUris(context: Context, uris: List<Uri>) {
+        if (uris.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
             val items = uris.map { uri ->
-                val type = if (context.contentResolver.getType(uri)?.contains("video") == true) {
-                    MediaType.VIDEO
-                } else {
-                    MediaType.IMAGE
-                }
+                val type = resolveMediaType(context, uri)
 
                 var duration = 0L
                 var size = 0L
@@ -181,7 +310,9 @@ class WatermarkViewModel : ViewModel() {
                     val retriever = android.media.MediaMetadataRetriever()
                     try {
                         retriever.setDataSource(context, uri)
-                        val durationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                        val durationStr = retriever.extractMetadata(
+                            android.media.MediaMetadataRetriever.METADATA_KEY_DURATION,
+                        )
                         duration = durationStr?.toLong() ?: 0L
                     } catch (e: Exception) {
                         Log.e("WatermarkVM", "Error extracting duration", e)
@@ -199,12 +330,12 @@ class WatermarkViewModel : ViewModel() {
                     type = type,
                     name = uri.lastPathSegment ?: (if (type == MediaType.VIDEO) "video.mp4" else "image.jpg"),
                     size = size,
-                    duration = duration
+                    duration = duration,
                 )
             }
 
             _uiState.value = _uiState.value.copy(
-                selectedMedia = _uiState.value.selectedMedia + items
+                selectedMedia = _uiState.value.selectedMedia + items,
             )
         }
     }
@@ -246,26 +377,88 @@ class WatermarkViewModel : ViewModel() {
             _uiState.value = _uiState.value.copy(isProcessing = true, processingProgress = 0f, errorMessage = null)
             val items = _uiState.value.selectedMedia
             val configs = _uiState.value.watermarkConfigs
+            if (items.isEmpty()) {
+                _uiState.value = _uiState.value.copy(
+                    isProcessing = false,
+                    errorMessage = "Please select at least one photo or video.",
+                )
+                return@launch
+            }
+            if (configs.isEmpty()) {
+                _uiState.value = _uiState.value.copy(
+                    isProcessing = false,
+                    errorMessage = "No watermark or removal region configured.",
+                )
+                return@launch
+            }
+            val removeOnly = configs.all { it.type == WatermarkType.REMOVE }
+            val removeConfig = configs.firstOrNull { it.type == WatermarkType.REMOVE }
+
             val processed = mutableListOf<Uri>()
+            var failedCount = 0
 
             try {
                 items.forEachIndexed { index, item ->
                     if (!isActive) return@launch
                     
                     try {
-                        if (item.type == MediaType.IMAGE) {
-                            com.watermarkstudio.util.MediaProcessor.processImage(context, item.uri, configs, _uiState.value.isPremium)?.let {
-                                processed.add(it)
-                            }
-                        } else {
-                            val maxDurMs = if (_uiState.value.maxVideoDurationSec > 0) {
+                        val maxDurMs =
+                            if (_uiState.value.maxVideoDurationSec > 0) {
                                 _uiState.value.maxVideoDurationSec * 1000L
                             } else {
                                 0L
                             }
-                            com.watermarkstudio.util.MediaProcessor.processVideo(context, item.uri, configs, maxDurMs, _uiState.value.isPremium)?.let {
-                                processed.add(it)
+                        val outputUri =
+                            if (removeOnly && removeConfig != null) {
+                                if (item.type == MediaType.VIDEO &&
+                                    !com.watermarkstudio.removal.RemovalCapability.supportsVideoRemoval(context)
+                                ) {
+                                    _uiState.value = _uiState.value.copy(
+                                        isProcessing = false,
+                                        errorMessage = context.getString(
+                                            R.string.error_remove_video_not_supported,
+                                        ),
+                                    )
+                                    return@launch
+                                }
+                                val itemBase = index.toFloat() / items.size
+                                val itemSpan = 1f / items.size.coerceAtLeast(1)
+                                com.watermarkstudio.removal.RemovalPipeline.processItem(
+                                    context,
+                                    item,
+                                    removeConfig,
+                                    maxDurMs,
+                                    _uiState.value.isPremium,
+                                    progress = com.watermarkstudio.removal.RemovalProgress { sub ->
+                                        _uiState.value =
+                                            _uiState.value.copy(
+                                                processingProgress =
+                                                    (itemBase + itemSpan * sub.coerceIn(0f, 1f))
+                                                        .coerceIn(0f, 1f),
+                                            )
+                                    },
+                                )
+                            } else if (item.type == MediaType.IMAGE) {
+                                com.watermarkstudio.util.MediaProcessor.processImage(
+                                    context,
+                                    item.uri,
+                                    configs,
+                                    _uiState.value.isPremium,
+                                )
+                            } else {
+                                com.watermarkstudio.util.MediaProcessor.processVideo(
+                                    context,
+                                    item.uri,
+                                    configs,
+                                    maxDurMs,
+                                    _uiState.value.isPremium,
+                                )
                             }
+                        if (outputUri != null) {
+                            processed.add(outputUri)
+                        } else {
+                            failedCount++
+                            Log.e("WatermarkVM", "Processing returned null for ${item.name}")
                         }
                     } catch (t: Throwable) {
                         Log.e("WatermarkVM", "Error processing item: ${item.name}", t)
@@ -280,10 +473,31 @@ class WatermarkViewModel : ViewModel() {
                     _uiState.value = _uiState.value.copy(processingProgress = (index + 1).toFloat() / items.size)
                 }
 
+                val errorMessage =
+                    when {
+                        processed.isEmpty() && items.isNotEmpty() ->
+                            "Failed to process media. Please check the file format and try again."
+                        failedCount > 0 && processed.isNotEmpty() ->
+                            "Processed ${processed.size} of ${items.size} items. Some files could not be processed."
+                        else -> null
+                    }
+
+                val successBatchId =
+                    if (processed.isNotEmpty() && errorMessage == null) {
+                        if (!_uiState.value.isPremium) {
+                            commitFreeExport(context)
+                        }
+                        System.currentTimeMillis()
+                    } else {
+                        0L
+                    }
+
                 _uiState.value = _uiState.value.copy(
                     isProcessing = false,
                     processingProgress = 1f,
-                    processedMediaUris = (_uiState.value.processedMediaUris + processed).takeLast(20)
+                    processedMediaUris = (_uiState.value.processedMediaUris + processed).takeLast(20),
+                    errorMessage = errorMessage,
+                    exportSuccessBatchId = successBatchId,
                 )
             } catch (t: Throwable) {
                 Log.e("WatermarkVM", "Batch processing failed", t)

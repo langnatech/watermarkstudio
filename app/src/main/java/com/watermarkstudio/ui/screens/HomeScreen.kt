@@ -30,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 @Composable
 fun HomeScreen(
     onNavigateToAddWatermark: () -> Unit,
+    onNavigateToAddLogoWatermark: () -> Unit,
     onNavigateToRemoveWatermark: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToSubscription: () -> Unit,
@@ -42,6 +43,9 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) {
         viewModel.checkPremium(context)
+        if (viewModel.consumePendingLibraryTab()) {
+            currentTab = 1
+        }
     }
 
     Box(
@@ -353,7 +357,7 @@ fun HomeScreen(
                             )
                         }
                         Text(
-                            text = stringResource(R.string.developer_lifetime_active_label),
+                            text = stringResource(R.string.pro_subscription_active_label),
                             color = Color(0xFF10B981),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
@@ -510,7 +514,11 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(20.dp))
 
                         Text(
-                            text = if (selectedMode == 0) stringResource(R.string.tap_to_add_batch_media) else stringResource(R.string.choose_media_to_remove_stamp),
+                            text = if (selectedMode == 0) {
+                                stringResource(R.string.home_open_watermark_studio)
+                            } else {
+                                stringResource(R.string.home_open_remove_studio)
+                            },
                             color = Color.White,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
@@ -520,12 +528,29 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(6.dp))
 
                         Text(
-                            text = stringResource(R.string.uhd_format_support_desc),
+                            text = if (selectedMode == 0) {
+                                stringResource(R.string.home_open_studio_subtitle)
+                            } else {
+                                stringResource(R.string.home_open_remove_subtitle)
+                            },
                             color = Color(0xFF64748B),
                             fontSize = 12.sp,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             modifier = Modifier.padding(horizontal = 14.dp)
                         )
+
+                        if (selectedMode == 1 && !uiState.isPremium) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            val remaining =
+                                (uiState.maxFreeExportsPerDay - uiState.freeExportsUsedToday).coerceAtLeast(0)
+                            Text(
+                                text = stringResource(R.string.remove_free_exports_badge, remaining),
+                                color = Color(0xFF10B981),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            )
+                        }
                     }
 
                     // Floating Glass badge label
@@ -579,14 +604,17 @@ fun HomeScreen(
                         label = stringResource(R.string.action_logo),
                         accentColor = Color(0xFF3B82F6),
                         modifier = Modifier.weight(1f),
-                        onClick = onNavigateToAddWatermark
+                        onClick = onNavigateToAddLogoWatermark
                     )
                     QuickActionItem(
                         icon = Icons.Default.Layers,
                         label = stringResource(R.string.action_multilayer),
                         accentColor = Color(0xFFEC4899),
                         modifier = Modifier.weight(1f),
-                        onClick = onNavigateToAddWatermark
+                        onClick = {
+                            viewModel.setPendingMultilayer(true)
+                            onNavigateToAddWatermark()
+                        },
                     )
                 }
                 }

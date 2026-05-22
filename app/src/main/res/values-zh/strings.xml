@@ -9,12 +9,17 @@
     
     <!-- HomeScreen -->
     <string name="upgrade_pro_banner">升级进入 Pro 专业版</string>
-    <string name="upgrade_pro_banner_features">解锁智能视频消除 • 全文本图章 • 无时间长限制</string>
-    <string name="developer_lifetime_active_label">开发者终身 Premium 订阅已激活 👑</string>
+    <string name="upgrade_pro_banner_features">无限导出 · 无应用角标 · 高清输出 · 更长视频</string>
+    <string name="pro_subscription_active_label">Pro 订阅已激活</string>
     <string name="btn_add_watermark">添加水印</string>
     <string name="btn_remove_stamp">消除水印</string>
     <string name="tap_to_add_batch_media">点击添加批量媒体</string>
     <string name="choose_media_to_remove_stamp">选择需要消除图章的媒体</string>
+    <string name="home_open_remove_studio">进入去水印工作台</string>
+    <string name="home_open_remove_subtitle">标准版 TELEA/时序中值；Pro 光流恢复、边缘融合并保留原声；共用每日导出额度</string>
+    <string name="editor_remove_region_hint">将绿色区域对准图章后导出。免费：标准修复 / 多帧时序中值（视频无原声）。Pro：光流时序恢复、无缝边缘融合，视频导出保留原音轨。效果取决于运动与背景。</string>
+    <string name="editor_remove_controls_header">消除区域</string>
+    <string name="remove_free_exports_badge">免费 · 今日剩余 %1$d 次</string>
     <string name="uhd_format_support_desc">支持批量超清视频、个性图章以及高级水印参数设置</string>
     <string name="studio_console_label">工作台控制面板</string>
     <string name="title_quick_actions">快捷导航</string>
@@ -42,6 +47,11 @@
     <string name="dialog_free_exports_exhausted_desc">您已用完每日 3 次的免费导出权限。升级到 Pro 尊享限制全免、去官方红字水印和纯净无广告体验！</string>
     <string name="parameter_controls_header">属性参数调节</string>
     <string name="select_media_begin">请点击上方选择媒体开始</string>
+    <string name="editor_tap_select_media">点击选择图片或视频</string>
+    <string name="editor_select_media_add">添加图片 / 视频</string>
+    <string name="editor_select_media_count">已选 %1$d 项 · 继续添加</string>
+    <string name="home_open_watermark_studio">进入水印工作台</string>
+    <string name="home_open_studio_subtitle">在工作台中选择媒体并编辑水印</string>
     <string name="btn_process_export">执行批量转换并导出</string>
     <string name="viewfinder_badg_format">监视预览器 [1 / %1$d]</string>
     <string name="cut_duration_badge">被裁剪</string>
@@ -97,8 +107,26 @@
     <!-- Privileges -->
     <string name="privilege_video_limits_title">5分钟 PRO 长视频转换</string>
     <string name="privilege_video_limits_desc">支持单次处理长达 5分钟的专业视频，极速导出不卡顿（免费版限制在前 15秒短片）。</string>
-    <string name="privilege_ai_removal_title">高级纯净水印擦除</string>
-    <string name="privilege_ai_removal_desc">无损智能模糊画面中各类台标、剪映logo及多重复杂的文字签名。</string>
+    <string name="privilege_region_removal_title">区域图章消除</string>
+    <string name="privilege_region_removal_desc">标准版：图片 TELEA 修复、视频时序中值（无原声）。Pro：NS 修复 + 无缝融合、光流视频恢复并保留原音轨；更高分辨率、无应用角标。</string>
+    <string name="error_remove_video_not_supported">当前设备无法处理视频去水印（模拟器、低内存或缺少编码器）。请在真机上重试或仅处理图片。</string>
+    <string name="watermark_layers_title">水印图层</string>
+    <string name="layer_type_text">文字</string>
+    <string name="layer_type_image">图片</string>
+    <string name="layer_type_remove">消除区域</string>
+    <string name="layer_preview_image">图片图层</string>
+    <string name="layer_add_text">添加文字图层</string>
+    <string name="editor_settings_title">设置</string>
+    <string name="billing_product_unavailable">订阅商品不可用，请在 Play 控制台配置商品 ID。</string>
+    <string name="billing_not_ready">Google Play 结算未就绪，请稍后重试。</string>
+    <string name="toast_restore_none">未找到该账号的有效订阅。</string>
+    <string name="toast_restore_error">恢复购买失败，请检查网络后重试。</string>
+    <string name="btn_manage_subscription">管理订阅</string>
+    <string name="dialog_premium_feature">专业版功能</string>
+    <string name="editor_title_add">添加水印</string>
+    <string name="editor_title_remove">消除水印</string>
+    <string name="editor_workspace_subtitle">工作台</string>
+    <string name="processing_batch">正在批量处理…</string>
     <string name="privilege_brand_signature_title">移除应用水印尾标</string>
     <string name="privilege_brand_signature_desc">默认导出的成品文件中将不再附加任何“Free Trial”红字徽章，呈现个人专属内容。</string>
     <string name="privilege_hd_outputs_title">1080p 全清无损画质</string>

@@ -109,70 +109,7 @@ object MediaProcessor {
                             }
                         }
                         WatermarkType.REMOVE -> {
-                            // High-end smart content healing & blending
-                            val rectWidth = (bitmap.width * 0.18f * config.scale).toInt().coerceAtLeast(10)
-                            val rectHeight = (bitmap.height * 0.08f * config.scale).toInt().coerceAtLeast(10)
-                            val centerX = (bitmap.width * (config.x / 100f)).toInt()
-                            val centerY = (bitmap.height * (config.y / 100f)).toInt()
-                            
-                            val left = (centerX - rectWidth / 2).coerceIn(0, bitmap.width - 1)
-                            val top = (centerY - rectHeight / 2).coerceIn(0, bitmap.height - 1)
-                            val right = (centerX + rectWidth / 2).coerceIn(0, bitmap.width)
-                            val bottom = (centerY + rectHeight / 2).coerceIn(0, bitmap.height)
-                            
-                            val w = right - left
-                            val h = bottom - top
-                            if (w > 0 && h > 0) {
-                                val subBitmap = Bitmap.createBitmap(bitmap, left, top, w, h)
-                                
-                                // Solve high-frequency textures (stamps, text) by downscaling to a 8x8 gradient grid
-                                // This effectively retains the pure original colors, lighting and background gradients
-                                val smallW = 8
-                                val smallH = 8
-                                val smallBitmap = Bitmap.createScaledBitmap(subBitmap, smallW, smallH, true)
-                                
-                                // Bilinear upscale to restore full resolution with elegant back-bled soft gradients
-                                val healedBitmap = Bitmap.createScaledBitmap(smallBitmap, w, h, true)
-                                
-                                // Create an alpha mask to melt the edges with the original picture
-                                val maskedBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-                                val maskCanvas = Canvas(maskedBitmap)
-                                val basePaint = Paint().apply { isAntiAlias = true }
-                                maskCanvas.drawBitmap(healedBitmap, 0f, 0f, basePaint)
-                                
-                                // Progressive alpha edge-feathering to erase hard bounding lines
-                                val featherSize = (Math.min(w, h) / 4).coerceAtLeast(4).coerceAtMost(20)
-                                for (i in 0 until featherSize) {
-                                    val ratio = i.toFloat() / featherSize
-                                    val edgePaint = Paint().apply {
-                                        color = Color.TRANSPARENT
-                                        style = Paint.Style.STROKE
-                                        strokeWidth = 2.5f
-                                        isAntiAlias = true
-                                        xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
-                                    }
-                                    edgePaint.alpha = (255 * ratio).toInt()
-                                    maskCanvas.drawRect(
-                                        i.toFloat(),
-                                        i.toFloat(),
-                                        (w - i).toFloat(),
-                                        (h - i).toFloat(),
-                                        edgePaint
-                                    )
-                                }
-                                
-                                val paint = Paint().apply {
-                                    isAntiAlias = true
-                                    isFilterBitmap = true
-                                    alpha = (config.opacity * 255).toInt()
-                                }
-                                canvas.drawBitmap(maskedBitmap, left.toFloat(), top.toFloat(), paint)
-                                
-                                subBitmap.recycle()
-                                smallBitmap.recycle()
-                                healedBitmap.recycle()
-                                maskedBitmap.recycle()
-                            }
+                            // Handled by RemovalPipeline when remove-only session
                         }
                     }
                 }
@@ -308,61 +245,7 @@ object MediaProcessor {
                         }
                     }
                     WatermarkType.REMOVE -> {
-                        // Luxury Lens Diffuser / Frosted-Glass Overlay for ultra clean video watermark elimination
-                        val width = 180
-                        val height = 90
-                        val patchBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                        val canvas = Canvas(patchBitmap)
-
-                        // We build a multi-stage radial color diffuser lens
-                        // It smoothly scatters and diffuses high-contrast text lines of the watermark below
-                        val paint = Paint().apply {
-                            isAntiAlias = true
-                        }
-
-                        // Progressive circular/radial gradient blur simulation centered on the target watermark
-                        val radialShader = RadialGradient(
-                            (width / 2).toFloat(),
-                            (height / 2).toFloat(),
-                            (Math.max(width, height) / 1.6f),
-                            intArrayOf(
-                                Color.argb(210, 20, 26, 38),  // Center: neutral deep-slate mask (high density)
-                                Color.argb(140, 28, 35, 48),  // Middling blend
-                                Color.TRANSPARENT             // Edge: completely transparent fade-out
-                            ),
-                            floatArrayOf(0.0f, 0.5f, 1.0f),
-                            Shader.TileMode.CLAMP
-                        )
-                        paint.shader = radialShader
-                        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
-
-                        // Draw a refined light glass sheen framing highlight
-                        val glassPaint = Paint().apply {
-                            isAntiAlias = true
-                        }
-                        val linearShader = LinearGradient(
-                            0f, 0f, width.toFloat(), height.toFloat(),
-                            Color.argb(40, 255, 255, 255), // Subtle frosted glass highlight
-                            Color.TRANSPARENT,
-                            Shader.TileMode.CLAMP
-                        )
-                        glassPaint.shader = linearShader
-                        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), glassPaint)
-
-                        val xPos = (config.x / 100f) * 2f - 1f
-                        val yPos = 1f - (config.y / 100f) * 2f
-
-                        val removeOverlay = BitmapOverlay.createStaticBitmapOverlay(
-                            patchBitmap,
-                            OverlaySettings.Builder()
-                                .setAlphaScale(config.opacity * 0.98f)
-                                .setScale(config.scale * 0.22f, config.scale * 0.12f)
-                                .setOverlayFrameAnchor(0f, 0f)
-                                .setBackgroundFrameAnchor(xPos, yPos)
-                                .build()
-                        )
-                        overlays.add(removeOverlay)
-                        bitmapsToRecycle.add(patchBitmap)
+                        // Video removal uses RemovalPipeline (temporal median + re-encode)
                     }
                     else -> {}
                 }

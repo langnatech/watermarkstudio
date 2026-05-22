@@ -1,89 +1,109 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Watermark Studio
 
-# Run and deploy your AI Studio app
+Android 应用：批量添加文字/Logo 水印，以及基于**本地区域模糊混合**的图章消除（非 AI）。支持 Google Play 订阅与 AdMob 变现。
 
-This contains everything you need to run your app locally.
+## 构建与运行
 
-View your app in AI Studio: https://ai.studio/apps/f621e555-b526-4722-82f5-d29c38bdc37a
+**环境**：Android Studio，JDK 11+，minSdk 24。
 
-## Run Locally
+```powershell
+.\gradlew.bat :app:installDebug
+```
 
-**Prerequisites:**  [Android Studio](https://developer.android.com/studio)
+单元测试：
 
+```powershell
+.\gradlew.bat :app:testDebugUnitTest
+```
 
-1. Open Android Studio
-2. Select **Open** and choose the directory containing this project
-3. Allow Android Studio to fix any incompatibilities as it imports the project.
-4. Create a file named `.env` in the project directory and set `GEMINI_API_KEY` in that file to your Gemini API key (see `.env.example` for an example)
-5. Remove this line from the app's `build.gradle.kts` file: `signingConfig = signingConfigs.getByName("debugConfig")`
-6. Run the app on an emulator or physical device
+## Release 签名与 AAB
 
-## 发布 Release 包（AAB/APK）
+1. 复制 `keystore.properties.example` → `keystore.properties`，填入 `my-upload-key.jks` 密码。
+2. 构建：`.\gradlew.bat bundleRelease`
+3. 输出：`app/build/outputs/bundle/release/app-release.aab`
 
-Release 构建需要有效的上传密钥。`signReleaseBundle` 失败并出现 `NullPointerException` 时，通常是以下原因之一：
+配置不完整时会在 Gradle 配置阶段报错，避免 `signReleaseBundle` NPE。
 
-1. **Keystore 文件缺失**：默认路径为项目根目录 `my-upload-key.jks`
-2. **密码未配置**：`storePassword` / `keyPassword` 为空时，签名阶段会 NPE
+## 发布前生产检查清单
 
-### 配置步骤
+| 项 | 位置 | 说明 |
+|----|------|------|
+| AdMob 正式 ID | `app/src/release/res/values/admob.xml` | 替换 Google 测试 ID；debug 使用 `app/src/debug/res/values/admob.xml` 测试 ID |
+| Play 订阅 SKU | Play Console + `BillingProducts.kt` | `com.watermark.pro.weekly/monthly/yearly` 必须与控制台一致 |
+| 隐私政策 / 条款 URL | `values/strings.xml` | 已指向 GitHub Pages；部署见 `docs/readme.md` |
+| UMP 同意 | `UmpConsentHelper.kt` | 在 AdMob 初始化前请求；EEA 投放广告前必测 |
+| 免费导出次数 | `res/values/integers.xml` `free_exports_per_day` | 默认 3，与添加/去水印共用 |
+| ProGuard | `app/proguard-rules.pro` | 已保留 `com.watermarkstudio.*` 模型与 ViewModel |
+| 去水印算法说明 | 商店文案 | 本地 OpenCV/时序恢复；Pro 光流+保留原声；勿宣传全 AI 修复 |
+| keystore | 勿提交仓库 | `keystore.properties`、`*.jks` 已在 `.gitignore` |
 
-1. 若尚无上传密钥，在项目根目录生成（请自行记录密码）。
+## 核心业务流程
 
-   Windows 上若提示找不到 `keytool`，请使用 Android Studio 自带的 JDK（不要直接写 `keytool`）：
+### 添加水印
 
-   ```powershell
-   cd D:\watermark-studio
-   & "C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe" -genkeypair -v -storetype PKCS12 -keystore my-upload-key.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000
-   ```
+1. 首页 → **进入水印工作台**（或快捷：文字 / Logo / 多层）
+2. 选择图片/视频（Photo Picker，无需冷启动 READ_MEDIA 权限）
+3. 编辑水印层（Layers 面板可切换/删除多层）
+4. **执行批量转换并导出** → 写入系统相册；成功后在非 Pro 环境可能展示插屏广告
+5. **媒体库** Tab 查看已处理 URI
 
-   **注意**：若 `my-upload-key.jks` 已存在，`keytool` 会先要求输入**原密钥库密码**才能继续；输错会报 `keystore password was incorrect`。此时不要重复生成，应直接配置 `keystore.properties`。仅当忘记旧密码且应用尚未上架时，可先删除旧文件再重新生成：
+### 去水印（免费额度，无需订阅）
 
-   ```powershell
-   Remove-Item .\my-upload-key.jks
-   # 再执行上面的 keytool -genkeypair 命令
-   ```
+1. 首页 → **消除水印** → **进入去水印工作台**
+2. 支持**图片与视频**（模拟器/低内存设备视频会提示 `error_remove_video_not_supported`）
+3. 绿色预览框与处理区域使用同一 `RemovalRegion` 比例
+4. 导出成功后扣减每日免费次数（`res/values/integers.xml`）；失败不扣减
+5. 免费导出带应用角标；Pro 无角标、更高分辨率，并默认 **ADVANCED** 算法
 
-   若希望当前终端会话里可直接用 `keytool`，可先执行：
+### 订阅
 
-   ```powershell
-   $env:Path = "C:\Program Files\Android\Android Studio\jbr\bin;" + $env:Path
-   ```
+- 购买 / 恢复购买 / **管理订阅**（跳转 Play 订阅管理页）
+- 商品未配置时 Toast 提示 `billing_product_unavailable`
 
-2. 复制 `keystore.properties.example` 为 `keystore.properties`，填入真实密码（该文件已加入 `.gitignore`，勿提交）：
+## 去水印算法（阶段二：OpenCV + 光流 + 原声保留）
 
-   ```properties
-   storeFile=my-upload-key.jks
-   storePassword=你的密钥库密码
-   keyAlias=upload
-   keyPassword=你的密钥密码
-   ```
+质量档位由 [`RemovalQuality`](app/src/main/java/com/watermarkstudio/removal/RemovalQuality.kt) 决定：**Pro → ADVANCED**，免费 → **STANDARD**。
 
-   也可使用环境变量：`STORE_PASSWORD`、`KEY_PASSWORD`（可选 `KEY_ALIAS`、`KEYSTORE_PATH`）。
+| 媒体 | STANDARD（免费） | ADVANCED（Pro） |
+|------|------------------|-----------------|
+| **图片** | `Photo.inpaint` TELEA | NS inpaint + 羽化 mask + `Photo.seamlessClone` |
+| **视频** | Retriever 抽帧 → JNI 时序中值 → H.264（**无音频**） | MediaCodec 解码（失败回退 Retriever）→ Farneback 光流填充（失败回退中值）→ 逐帧 NS + seamlessClone → H.264 + **拷贝源 AAC 音轨** |
+| **预览** | 与处理共用 [`RemovalRegion`](app/src/main/java/com/watermarkstudio/util/RemovalRegion.kt) | 同左 |
 
-3. 构建 Release Bundle：
+- Kotlin 入口：[`RemovalPipeline`](app/src/main/java/com/watermarkstudio/removal/RemovalPipeline.kt) → [`VideoRemovalEngine`](app/src/main/java/com/watermarkstudio/removal/video/VideoRemovalEngine.kt)
+- Native：`app/src/main/cpp/`（`removal_native`，时序中值）
+- 依赖：`org.opencv:opencv:4.9.0`（BSD，无 contrib/DIS）
+- Pro 导出失败时：ADVANCED 视频 mux 失败会回退 **无音频** slideshow 编码
 
-   ```powershell
-   .\gradlew.bat bundleRelease
-   ```
+**阶段 2b（未实现）**：opencv-contrib DIS、FFmpeg-kit remux、完整 PatchMatch。
 
-   输出路径：`app/build/outputs/bundle/release/app-release.aab`
+### 真机 QA 矩阵（去水印）
 
-配置不完整时，构建会在任务图就绪阶段报错并列出缺失项，而不是在 `signReleaseBundle` 阶段抛出无信息的 NPE。
+| 场景 | STANDARD | ADVANCED |
+|------|----------|----------|
+| 静态角标图片 | TELEA 修复 | NS + 无缝边缘 |
+| 轻微平移背景视频 | 时序中值 | 光流填充 + 原声 |
+| 运动剧烈视频 | 可能残留 | 光流失败回退中值 |
+| 无音轨视频 | 仅视频轨 | 仅视频轨 |
+| 模拟器 | 视频禁用提示 | 同左 |
 
-## Google Play 隐私权政策 URL（中英双语 · GitHub Pages）
-
-上架时 Play 控制台要求填写**可公开访问的 HTTPS 隐私政策链接**（本应用含广告与订阅，必须提供）。
+## Google Play 法律文档
 
 | 文件 | 说明 |
 |------|------|
-| `docs/privacy-policy.html` | 中英双语隐私政策（章节左右对照） |
-| `docs/terms-of-service.html` | 中英双语服务条款 |
-| `docs/readme.md` | **GitHub Pages 部署步骤**（Settings → Pages → `/docs`） |
+| `docs/privacy-policy.html` | 隐私政策（中英） |
+| `docs/terms-of-service.html` | 服务条款（中英） |
+| `docs/readme.md` | GitHub Pages 部署 |
 
-部署后 Play 控制台 URL 示例：
+## 真机 QA 矩阵（发布前）
 
-`https://<GitHub用户名>.github.io/<仓库名>/privacy-policy.html`
-
-同步更新 `app/src/main/res/values/strings.xml` 中的 `privacy_policy_url`、`terms_of_service_url`。发布前将 HTML 内联系邮箱改为真实支持邮箱。
+| 场景 | 非 Pro | Pro |
+|------|--------|-----|
+| 添加水印全流程 | 额度、角标、720p/1024 | 无角标、1080/2500 |
+| 去水印图片 | TELEA、扣额度 | NS + seamlessClone、无角标 |
+| 去水印视频 | 中值、无原声 | 光流 + 保留原声（真机） |
+| 去水印 + 模拟器 | 视频提示不支持 | 同左 |
+| 额度耗尽 | 升级对话框 | — |
+| 恢复购买 | 成功/无订阅/失败 Toast | — |
+| 冷启动 | 无 WorkManager/Emoji 崩溃 | — |
+| Release 包 | 各屏无混淆崩溃 | — |

@@ -34,9 +34,12 @@
 -keep class androidx.lifecycle.** { *; }
 -dontwarn androidx.lifecycle.**
 
-# Application Models & ViewModels (referenced by name in Compose/StateFlow)
--keep class com.example.model.** { *; }
--keep class com.example.viewmodel.** { *; }
+# Application Models & ViewModels
+-keep class com.watermarkstudio.model.** { *; }
+-keep class com.watermarkstudio.viewmodel.** { *; }
+-keep class com.watermarkstudio.billing.** { *; }
+-keep class com.watermarkstudio.removal.** { *; }
+-keep class org.opencv.** { *; }
 
 # Navigation & Activity (keep class names for deep links / navigation)
 -keepclassmembers class * {

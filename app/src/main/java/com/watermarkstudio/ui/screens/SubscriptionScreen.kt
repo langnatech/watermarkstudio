@@ -32,6 +32,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.watermarkstudio.billing.BillingProducts
+import com.watermarkstudio.util.BillingUiEvent
+import com.watermarkstudio.util.RestorePurchaseResult
 import com.watermarkstudio.viewmodel.WatermarkViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.watermarkstudio.R
@@ -47,6 +50,8 @@ fun SubscriptionScreen(
     val billingProducts by viewModel.billingProducts.collectAsStateWithLifecycle()
     val purchaseSuccess by viewModel.purchaseSuccessEvent.collectAsStateWithLifecycle()
     val purchaseFlowFinished by viewModel.purchaseFlowFinishedEvent.collectAsStateWithLifecycle()
+    val billingUiEvent by viewModel.billingUiEvent.collectAsStateWithLifecycle()
+    val restorePurchaseResult by viewModel.restorePurchaseResult.collectAsStateWithLifecycle()
     val context = LocalContext.current
     
     // Localized labels for plans
@@ -72,9 +77,9 @@ fun SubscriptionScreen(
         val pricingPhase = details.subscriptionOfferDetails?.firstOrNull()
             ?.pricingPhases?.pricingPhaseList?.firstOrNull() ?: return defaultPrice
         return "${pricingPhase.formattedPrice} / ${when(productId) {
-            "com.watermark.pro.weekly" -> unitWeek
-            "com.watermark.pro.monthly" -> unitMonth
-            "com.watermark.pro.yearly" -> unitYear
+            BillingProducts.WEEKLY -> unitWeek
+            BillingProducts.MONTHLY -> unitMonth
+            BillingProducts.YEARLY -> unitYear
             else -> unitMonth
         }}"
     }
@@ -82,9 +87,9 @@ fun SubscriptionScreen(
     // Available subscription plans
     val plans = remember(billingProducts, planWeeklyTitle, planMonthlyTitle, planYearlyTitle) {
         listOf(
-            SubPlan("weekly", planWeeklyTitle, getProductPrice("com.watermark.pro.weekly", if (unitWeek == "周") "¥6.00 / 周" else "¥6.00 / week"), planWeeklyTag, planWeeklyDesc),
-            SubPlan("monthly", planMonthlyTitle, getProductPrice("com.watermark.pro.monthly", if (unitMonth == "月") "¥18.00 / 月" else "¥18.00 / month"), planMonthlyTag, planMonthlyDesc, isPopular = true),
-            SubPlan("yearly", planYearlyTitle, getProductPrice("com.watermark.pro.yearly", if (unitYear == "年") "¥58.00 / 年" else "¥58.00 / year"), planYearlyTag, planYearlyDesc)
+            SubPlan("weekly", planWeeklyTitle, getProductPrice(BillingProducts.WEEKLY, if (unitWeek == "周") "¥6.00 / 周" else "¥6.00 / week"), planWeeklyTag, planWeeklyDesc),
+            SubPlan("monthly", planMonthlyTitle, getProductPrice(BillingProducts.MONTHLY, if (unitMonth == "月") "¥18.00 / 月" else "¥18.00 / month"), planMonthlyTag, planMonthlyDesc, isPopular = true),
+            SubPlan("yearly", planYearlyTitle, getProductPrice(BillingProducts.YEARLY, if (unitYear == "年") "¥58.00 / 年" else "¥58.00 / year"), planYearlyTag, planYearlyDesc)
         )
     }
     
@@ -107,6 +112,42 @@ fun SubscriptionScreen(
         if (purchaseSuccess) {
             showSuccessDialog = true
             viewModel.resetPurchaseEvent()
+        }
+    }
+
+    LaunchedEffect(billingUiEvent) {
+        when (billingUiEvent) {
+            is BillingUiEvent.ProductUnavailable -> {
+                Toast.makeText(context, context.getString(R.string.billing_product_unavailable), Toast.LENGTH_LONG).show()
+            }
+            is BillingUiEvent.BillingNotReady -> {
+                Toast.makeText(context, context.getString(R.string.billing_not_ready), Toast.LENGTH_SHORT).show()
+            }
+            is BillingUiEvent.QueryFailed -> {
+                Toast.makeText(context, (billingUiEvent as BillingUiEvent.QueryFailed).message, Toast.LENGTH_SHORT).show()
+            }
+            null -> Unit
+        }
+        if (billingUiEvent != null) {
+            viewModel.clearBillingUiEvent()
+        }
+    }
+
+    LaunchedEffect(restorePurchaseResult) {
+        when (restorePurchaseResult) {
+            RestorePurchaseResult.SUCCESS -> {
+                Toast.makeText(context, context.getString(R.string.toast_restore_success), Toast.LENGTH_LONG).show()
+            }
+            RestorePurchaseResult.NONE -> {
+                Toast.makeText(context, context.getString(R.string.toast_restore_none), Toast.LENGTH_LONG).show()
+            }
+            RestorePurchaseResult.ERROR -> {
+                Toast.makeText(context, context.getString(R.string.toast_restore_error), Toast.LENGTH_LONG).show()
+            }
+            null -> Unit
+        }
+        if (restorePurchaseResult != null) {
+            viewModel.clearRestorePurchaseResult()
         }
     }
 
@@ -359,6 +400,29 @@ fun SubscriptionScreen(
                         }
 
                         Text(
+                            text = stringResource(R.string.btn_manage_subscription),
+                            color = Color(0xFF818CF8),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clickable {
+                                    val packageName = context.packageName
+                                    val intent = Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse(
+                                            "https://play.google.com/store/account/subscriptions?package=$packageName",
+                                        ),
+                                    )
+                                    try {
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, context.getString(R.string.billing_not_ready), Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                                .padding(vertical = 4.dp),
+                        )
+
+                        Text(
                             text = stringResource(R.string.subscription_autorenew_disclaimer),
                             color = Color(0xFF64748B), // Slate 500
                             fontSize = 10.sp,
@@ -475,8 +539,8 @@ fun PremiumPrivilegesSection() {
         PrivilegeRow(
             icon = Icons.Rounded.AutoFixHigh,
             iconTint = Color(0xFFEC4899),
-            title = stringResource(R.string.privilege_ai_removal_title),
-            desc = stringResource(R.string.privilege_ai_removal_desc)
+            title = stringResource(R.string.privilege_region_removal_title),
+            desc = stringResource(R.string.privilege_region_removal_desc)
         )
         PrivilegeRow(
             icon = Icons.Rounded.Verified,

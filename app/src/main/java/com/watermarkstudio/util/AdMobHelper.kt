@@ -21,18 +21,36 @@ object AdMobHelper {
     // IMPORTANT: Replace values in strings.xml with REAL production IDs before release.
 
     private var initialized = false
+    private var initInProgress = false
+    private val onReadyCallbacks = mutableListOf<() -> Unit>()
 
-    fun initialize(context: Context) {
-        if (initialized) return
+    fun initialize(context: Context, onReady: (() -> Unit)? = null) {
+        if (initialized) {
+            onReady?.invoke()
+            return
+        }
+        onReady?.let { onReadyCallbacks.add(it) }
+        if (initInProgress) return
+
+        initInProgress = true
+        val appContext = context.applicationContext
         try {
-            MobileAds.initialize(context) { status ->
+            MobileAds.initialize(appContext) { status ->
                 Log.d(TAG, "AdMob initialization state completed: $status")
                 initialized = true
+                initInProgress = false
+                val callbacks = onReadyCallbacks.toList()
+                onReadyCallbacks.clear()
+                callbacks.forEach { it() }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed initializing AdMob", e)
+            initInProgress = false
+            onReadyCallbacks.clear()
         }
     }
+
+    fun isInitialized(): Boolean = initialized
 }
 
 @Composable
@@ -71,6 +89,10 @@ object InterstitialAdLoader {
 
     fun loadAd(context: Context, adUnitId: String = context.getString(com.watermarkstudio.R.string.admob_interstitial_id)) {
         if (mInterstitialAd != null || isAdLoading) return
+        if (!AdMobHelper.isInitialized()) {
+            AdMobHelper.initialize(context) { loadAd(context, adUnitId) }
+            return
+        }
 
         isAdLoading = true
         val adRequest = AdRequest.Builder().build()

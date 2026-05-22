@@ -1,11 +1,7 @@
 <resources>
     <string name="app_name">Watermark Studio</string>
 
-    <!-- IMPORTANT: Replace these AdMob IDs with your REAL production IDs before release.
-         Using test IDs in production will result in policy violations and zero revenue. -->
-    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>
-    <string name="admob_banner_id">ca-app-pub-3940256099942544/6300978111</string>
-    <string name="admob_interstitial_id">ca-app-pub-3940256099942544/1033173712</string>
+    <!-- AdMob IDs: see app/src/debug/res/values/admob.xml and app/src/release/res/values/admob.xml -->
 
     <!-- IMPORTANT: Replace these URLs with your REAL privacy policy and terms of service pages.
          Google Play requires a valid privacy policy URL for all apps with subscriptions/ads. -->
@@ -21,12 +17,16 @@
     
     <!-- HomeScreen -->
     <string name="upgrade_pro_banner">Upgrade to Studio Pro</string>
-    <string name="upgrade_pro_banner_features">Unlock AI Removal • Text stamp tools • No limit video limits</string>
-    <string name="developer_lifetime_active_label">Developer Lifetime Subscription Is Active 👑</string>
+    <string name="upgrade_pro_banner_features">Unlimited exports • No app watermark • HD output • Longer videos</string>
+    <string name="pro_subscription_active_label">Pro subscription is active</string>
     <string name="btn_add_watermark">Add Watermark</string>
     <string name="btn_remove_stamp">Remove Stamp</string>
     <string name="tap_to_add_batch_media">Tap to Add Batch Media</string>
     <string name="choose_media_to_remove_stamp">Choose Media to Remove Stamp</string>
+    <string name="home_open_remove_studio">Open remove watermark studio</string>
+    <string name="home_open_remove_subtitle">OpenCV inpaint for images, temporal recovery for videos; free users share daily export quota</string>
+    <string name="editor_remove_controls_header">REMOVAL REGION</string>
+    <string name="remove_free_exports_badge">Free · %1$d exports left today</string>
     <string name="uhd_format_support_desc">Supports batches of UHD videos, stamps &amp; watermark configurations</string>
     <string name="studio_console_label">STUDIO CONSOLE</string>
     <string name="title_quick_actions">QUICK ACTIONS</string>
@@ -54,6 +54,11 @@
     <string name="dialog_free_exports_exhausted_desc">You have exhausted your 3 free daily exports. Upgrade to Pro for unlimited exports, removed duration limits, watermark-free results, and zero ads!</string>
     <string name="parameter_controls_header">PARAMETER CONTROLS</string>
     <string name="select_media_begin">Select Media to Begin</string>
+    <string name="editor_tap_select_media">Tap to select photos or videos</string>
+    <string name="editor_select_media_add">Add photos / videos</string>
+    <string name="editor_select_media_count">%1$d selected · Add more</string>
+    <string name="home_open_watermark_studio">Open watermark studio</string>
+    <string name="home_open_studio_subtitle">Then choose media in the editor workspace</string>
     <string name="btn_process_export">Process &amp; Export</string>
     <string name="viewfinder_badg_format">CONV_VIEWFINDER [1 / %1$d]</string>
     <string name="cut_duration_badge">Cut</string>
@@ -109,8 +114,27 @@
     <!-- Privileges -->
     <string name="privilege_video_limits_title">5-Minute PRO Video Exports</string>
     <string name="privilege_video_limits_desc">Unlock long video processing up to 5 minutes at ultra fast speed (Free is capped at 15s).</string>
-    <string name="privilege_ai_removal_title">Advanced Watermark Removal</string>
-    <string name="privilege_ai_removal_desc">Restore clarity of photos &amp; videos with AI-powered logo removing tool.</string>
+    <string name="privilege_region_removal_title">Regional stamp removal</string>
+    <string name="privilege_region_removal_desc">Standard: TELEA inpaint (images) and temporal median recovery (videos, no audio). Pro: NS inpaint + seamless blend; optical-flow video recovery with original audio kept. Higher resolution, no app badge.</string>
+    <string name="editor_remove_region_hint">Align the green region over the stamp, then export. Free: standard inpaint / temporal median (video without audio). Pro: optical-flow recovery, seamless edges, and video exports keep the original soundtrack. Results depend on motion and background.</string>
+    <string name="error_remove_video_not_supported">Video removal is not available on this device (emulator, low memory, or missing encoder). Try on a physical phone or use image removal.</string>
+    <string name="watermark_layers_title">Watermark layers</string>
+    <string name="layer_type_text">Text</string>
+    <string name="layer_type_image">Image</string>
+    <string name="layer_type_remove">Remove region</string>
+    <string name="layer_preview_image">Image layer</string>
+    <string name="layer_add_text">Add text layer</string>
+    <string name="editor_settings_title">Settings</string>
+    <string name="billing_product_unavailable">Subscription product is not available. Check Play Console configuration.</string>
+    <string name="billing_not_ready">Google Play Billing is not ready. Please try again.</string>
+    <string name="toast_restore_none">No active subscription found for this account.</string>
+    <string name="toast_restore_error">Could not restore purchases. Check your network and try again.</string>
+    <string name="btn_manage_subscription">Manage subscription</string>
+    <string name="dialog_premium_feature">Premium feature</string>
+    <string name="editor_title_add">Add watermark</string>
+    <string name="editor_title_remove">Remove watermark</string>
+    <string name="editor_workspace_subtitle">Studio console</string>
+    <string name="processing_batch">Processing batch…</string>
     <string name="privilege_brand_signature_title">No App watermark credits</string>
     <string name="privilege_brand_signature_desc">Remove the automatic bottom-right app signature for standard outputs.</string>
     <string name="privilege_hd_outputs_title">1080p Full HD Resolution</string>

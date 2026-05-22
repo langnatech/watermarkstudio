@@ -1,14 +1,20 @@
 package com.watermarkstudio.ui.screens
 
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import android.content.Intent
+import androidx.core.net.toUri
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,8 +29,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.layout.BoxWithConstraints
+import com.watermarkstudio.util.RemovalRegion
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import com.watermarkstudio.R
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -50,6 +61,8 @@ fun EditorScreen(
     var selectedWatermarkIndex by remember { mutableStateOf(-1) }
     var showPremiumDialog by remember { mutableStateOf(false) }
     var premiumDialogMessage by remember { mutableStateOf("") }
+    var showLayersSheet by remember { mutableStateOf(false) }
+    var showSettingsSheet by remember { mutableStateOf(false) }
 
     if (showPremiumDialog) {
         AlertDialog(
@@ -57,7 +70,7 @@ fun EditorScreen(
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Default.WorkspacePremium, contentDescription = null, tint = Color(0xFFFBBF24))
-                    Text("Premium Feature", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.dialog_premium_feature), fontWeight = FontWeight.Bold)
                 }
             },
             text = {
@@ -71,30 +84,47 @@ fun EditorScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6))
                 ) {
-                    Text("View Plans")
+                    Text(stringResource(R.string.btn_view_plans))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showPremiumDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.btn_cancel))
                 }
             },
             shape = RoundedCornerShape(28.dp)
         )
     }
 
-    val mediaLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetMultipleContents()
+    val legacyMediaLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents(),
     ) { uris ->
         viewModel.addMediaUris(context, uris)
     }
 
+    val visualMediaLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 50),
+    ) { uris ->
+        viewModel.addMediaUris(context, uris)
+    }
+
+    val launchMediaPicker: () -> Unit = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            visualMediaLauncher.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo),
+            )
+        } else {
+            legacyMediaLauncher.launch("*/*")
+        }
+    }
+
     val imageWatermarkLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.GetContent(),
     ) { uri ->
         uri?.let {
+            val newIndex = uiState.watermarkConfigs.size
             viewModel.addWatermark(WatermarkConfig(WatermarkType.IMAGE, imageUri = it))
-            selectedWatermarkIndex = uiState.watermarkConfigs.lastIndex // Select the newly added one
+            selectedWatermarkIndex = newIndex
         }
     }
 
@@ -107,46 +137,73 @@ fun EditorScreen(
         }
     }
 
-    LaunchedEffect(uiState.processedMediaUris) {
-        if (!uiState.isProcessing && uiState.processedMediaUris.isNotEmpty()) {
+    var lastHandledExportSuccessId by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(uiState.exportSuccessBatchId) {
+        val batchId = uiState.exportSuccessBatchId
+        if (batchId > 0L && batchId != lastHandledExportSuccessId && !uiState.isProcessing) {
+            lastHandledExportSuccessId = batchId
+            val successMessage = context.getString(R.string.snackbar_process_success)
             if (!uiState.isPremium) {
                 val activity = context as? android.app.Activity
                 if (activity != null) {
                     com.watermarkstudio.util.InterstitialAdLoader.showAd(activity) {
                         coroutineScope.launch {
-                            snackbarHostState.showSnackbar("All items processed and saved to gallery!")
+                            snackbarHostState.showSnackbar(successMessage)
+                            viewModel.clearExportSuccessEvent()
                         }
                     }
                 } else {
-                    snackbarHostState.showSnackbar("All items processed and saved to gallery!")
+                    snackbarHostState.showSnackbar(successMessage)
+                    viewModel.clearExportSuccessEvent()
                 }
             } else {
-                snackbarHostState.showSnackbar("All items processed and saved to gallery!")
+                snackbarHostState.showSnackbar(successMessage)
+                viewModel.clearExportSuccessEvent()
             }
         }
     }
 
     LaunchedEffect(mode) {
-        viewModel.clearWatermarks()
-        if (mode == WatermarkType.REMOVE) {
-            viewModel.addWatermark(WatermarkConfig(WatermarkType.REMOVE))
-        } else {
-            viewModel.addWatermark(WatermarkConfig(WatermarkType.TEXT, text = "Watermark"))
+        viewModel.resetEditorSession(mode)
+        selectedWatermarkIndex = 0
+        viewModel.checkPremium(context)
+        if (viewModel.consumePendingImageWatermarkFocus()) {
+            imageWatermarkLauncher.launch("image/*")
+        }
+        if (viewModel.consumePendingMultilayer()) {
+            viewModel.addWatermark(WatermarkConfig(WatermarkType.TEXT, text = "Layer 2"))
+            selectedWatermarkIndex = 1
+            showLayersSheet = true
         }
     }
+
+    val activeWatermarkIndex =
+        selectedWatermarkIndex.takeIf { it in uiState.watermarkConfigs.indices }
+            ?: uiState.watermarkConfigs.indices.lastOrNull()
+            ?: -1
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            if (!uiState.isPremium && uiState.freeExportsUsedToday >= uiState.maxFreeExportsPerDay) {
-                premiumDialogMessage = "You have exhausted your 3 free daily exports. Upgrade to Pro for unlimited exports, removed duration limits, watermark-free results, and zero ads!"
-                showPremiumDialog = true
+            if (viewModel.canStartExport(context)) {
+                viewModel.processAll(context)
             } else {
-                if (viewModel.consumeFreeExport(context)) {
-                    viewModel.processAll(context)
-                }
+                premiumDialogMessage = context.getString(R.string.dialog_free_exports_exhausted_desc)
+                showPremiumDialog = true
             }
+        }
+    }
+
+    val startExport: () -> Unit = {
+        if (!viewModel.canStartExport(context)) {
+            premiumDialogMessage = context.getString(R.string.dialog_free_exports_exhausted_desc)
+            showPremiumDialog = true
+        } else if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.P) {
+            permissionLauncher.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else {
+            viewModel.processAll(context)
         }
     }
 
@@ -186,13 +243,17 @@ fun EditorScreen(
                         }
                         Column {
                             Text(
-                                if (mode == WatermarkType.REMOVE) "Remove Watermark" else "Add Watermark",
+                                if (mode == WatermarkType.REMOVE) {
+                                    stringResource(R.string.editor_title_remove)
+                                } else {
+                                    stringResource(R.string.editor_title_add)
+                                },
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
                             Text(
-                                "Studio Console Workspace",
+                                stringResource(R.string.editor_workspace_subtitle),
                                 fontSize = 11.sp,
                                 color = Color(0xFF64748B),
                                 fontWeight = FontWeight.Bold
@@ -201,7 +262,7 @@ fun EditorScreen(
                     }
 
                     IconButton(
-                        onClick = { /* Settings */ },
+                        onClick = { showSettingsSheet = true },
                         modifier = Modifier
                             .size(42.dp)
                             .clip(CircleShape)
@@ -243,59 +304,97 @@ fun EditorScreen(
                             .navigationBarsPadding(),
                         verticalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
-                        // Type Selector
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                ToolButton(
-                                    icon = Icons.Default.TextFields,
-                                    selected = uiState.watermarkConfigs.getOrNull(selectedWatermarkIndex)?.type == WatermarkType.TEXT,
-                                    onClick = { viewModel.addWatermark(WatermarkConfig(WatermarkType.TEXT, text = "Watermark")) }
-                                )
-                                ToolButton(
-                                    icon = Icons.Default.Image,
-                                    selected = uiState.watermarkConfigs.getOrNull(selectedWatermarkIndex)?.type == WatermarkType.IMAGE,
-                                    onClick = { imageWatermarkLauncher.launch("image/*") }
-                                )
-                                ToolButton(
-                                    icon = Icons.Default.Layers,
-                                    selected = false,
-                                    onClick = { /* Layers list toggle */ }
+                        if (mode == WatermarkType.REMOVE) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.Default.AutoFixHigh,
+                                        contentDescription = null,
+                                        tint = Color(0xFF10B981),
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                    Text(
+                                        stringResource(R.string.remove_watermark_header),
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                    )
+                                }
+                                Text(
+                                    stringResource(R.string.editor_remove_controls_header),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF10B981),
+                                    letterSpacing = 1.2.sp,
                                 )
                             }
                             Text(
-                                "PARAMETER CONTROLS",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFF6366F1),
-                                letterSpacing = 1.2.sp
+                                stringResource(R.string.editor_remove_region_hint),
+                                color = Color(0xFF64748B),
+                                fontSize = 12.sp,
+                                lineHeight = 18.sp,
                             )
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    ToolButton(
+                                        icon = Icons.Default.TextFields,
+                                        selected = uiState.watermarkConfigs.getOrNull(activeWatermarkIndex)?.type == WatermarkType.TEXT,
+                                        onClick = {
+                                            val textIndex = uiState.watermarkConfigs.indexOfFirst { it.type == WatermarkType.TEXT }
+                                            if (textIndex >= 0) {
+                                                selectedWatermarkIndex = textIndex
+                                            } else {
+                                                val newIndex = uiState.watermarkConfigs.size
+                                                viewModel.addWatermark(WatermarkConfig(WatermarkType.TEXT, text = "Watermark"))
+                                                selectedWatermarkIndex = newIndex
+                                            }
+                                        },
+                                    )
+                                    ToolButton(
+                                        icon = Icons.Default.Image,
+                                        selected = uiState.watermarkConfigs.getOrNull(activeWatermarkIndex)?.type == WatermarkType.IMAGE,
+                                        onClick = { imageWatermarkLauncher.launch("image/*") },
+                                    )
+                                    ToolButton(
+                                        icon = Icons.Default.Layers,
+                                        selected = showLayersSheet,
+                                        onClick = { showLayersSheet = true },
+                                    )
+                                }
+                                Text(
+                                    stringResource(R.string.parameter_controls_header),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF6366F1),
+                                    letterSpacing = 1.2.sp,
+                                )
+                            }
                         }
 
-                        // Watermark Config
-                        if (uiState.watermarkConfigs.isNotEmpty()) {
+                        EditorSelectMediaRow(
+                            selectedCount = uiState.selectedMedia.size,
+                            onSelectMedia = launchMediaPicker,
+                        )
+
+                        if (activeWatermarkIndex >= 0) {
                             WatermarkConfigTools(
-                                config = uiState.watermarkConfigs.getOrNull(selectedWatermarkIndex) ?: uiState.watermarkConfigs.last(),
-                                onUpdate = { updated -> 
-                                    val idx = if (selectedWatermarkIndex == -1) uiState.watermarkConfigs.size - 1 else selectedWatermarkIndex
-                                    viewModel.updateWatermark(idx, updated)
-                                }
+                                config = uiState.watermarkConfigs[activeWatermarkIndex],
+                                onUpdate = { updated ->
+                                    viewModel.updateWatermark(activeWatermarkIndex, updated)
+                                },
                             )
-                        } else if (uiState.selectedMedia.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(100.dp)
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
-                                    .clickable { mediaLauncher.launch("*/*") },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("Select Media to Begin", color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
-                            }
                         }
 
                         val hasVideoSelected = uiState.selectedMedia.any { it.type == com.watermarkstudio.model.MediaType.VIDEO }
@@ -356,20 +455,7 @@ fun EditorScreen(
 
                         // Apply Button (Electric premium gradient sheen)
                         Button(
-                            onClick = { 
-                                if (!uiState.isPremium && uiState.freeExportsUsedToday >= uiState.maxFreeExportsPerDay) {
-                                    premiumDialogMessage = "You have exhausted your 3 free daily exports. Upgrade to Pro for unlimited exports, removed duration limits, watermark-free results, and zero ads!"
-                                    showPremiumDialog = true
-                                } else {
-                                    if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.P) {
-                                        permissionLauncher.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                                    } else {
-                                        if (viewModel.consumeFreeExport(context)) {
-                                            viewModel.processAll(context)
-                                        }
-                                    }
-                                }
-                            },
+                            onClick = startExport,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(52.dp)
@@ -392,7 +478,7 @@ fun EditorScreen(
                         ) {
                             Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.White)
                             Spacer(Modifier.width(8.dp))
-                            Text("Process & Export", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
+                            Text(stringResource(R.string.btn_process_export), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
                         }
                     }
                 }
@@ -416,11 +502,38 @@ fun EditorScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         if (uiState.selectedMedia.isEmpty()) {
+                            val accentColor =
+                                if (mode == WatermarkType.REMOVE) Color(0xFF10B981) else Color(0xFF6366F1)
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.clickable { mediaLauncher.launch("*/*") }
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier
+                                    .clickable { launchMediaPicker() }
+                                    .padding(24.dp),
                             ) {
-                                Icon(Icons.Default.Movie, contentDescription = null, tint = Color.White.copy(alpha = 0.08f), modifier = Modifier.size(96.dp))
+                                Icon(
+                                    if (mode == WatermarkType.REMOVE) Icons.Default.AutoFixHigh else Icons.Default.AddPhotoAlternate,
+                                    contentDescription = null,
+                                    tint = accentColor.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(72.dp),
+                                )
+                                Text(
+                                    stringResource(R.string.editor_tap_select_media),
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                )
+                                Text(
+                                    if (mode == WatermarkType.REMOVE) {
+                                        stringResource(R.string.home_open_remove_subtitle)
+                                    } else {
+                                        stringResource(R.string.select_media_begin)
+                                    },
+                                    color = Color(0xFF64748B),
+                                    fontSize = 12.sp,
+                                    textAlign = TextAlign.Center,
+                                )
                             }
                         } else {
                             val firstItem = uiState.selectedMedia.first()
@@ -521,7 +634,7 @@ fun EditorScreen(
                                     .size(48.dp)
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(MaterialTheme.colorScheme.surface)
-                                    .clickable { mediaLauncher.launch("*/*") },
+                                    .clickable { launchMediaPicker() },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = "Add more", modifier = Modifier.size(20.dp))
@@ -543,13 +656,224 @@ fun EditorScreen(
                     ) {
                         CircularProgressIndicator(progress = { uiState.processingProgress }, color = MaterialTheme.colorScheme.primary, strokeWidth = 6.dp, modifier = Modifier.size(80.dp))
                         Spacer(modifier = Modifier.height(24.dp))
-                        Text("Processing Batch...", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.processing_batch), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         Text("${(uiState.processingProgress * 100).toInt()}%", color = MaterialTheme.colorScheme.primary, fontSize = 24.sp, fontWeight = FontWeight.Black)
                     }
                 }
             }
         }
     }
+
+    if (showLayersSheet && mode != WatermarkType.REMOVE) {
+        val layersSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showLayersSheet = false },
+            sheetState = layersSheetState,
+            containerColor = Color(0xFF0F172A),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    stringResource(R.string.watermark_layers_title),
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    itemsIndexed(uiState.watermarkConfigs) { index, config ->
+                        val typeLabel = when (config.type) {
+                            WatermarkType.TEXT -> stringResource(R.string.layer_type_text)
+                            WatermarkType.IMAGE -> stringResource(R.string.layer_type_image)
+                            WatermarkType.REMOVE -> stringResource(R.string.layer_type_remove)
+                        }
+                        val selected = index == activeWatermarkIndex
+                        Surface(
+                            onClick = { selectedWatermarkIndex = index },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (selected) Color(0xFF6366F1).copy(alpha = 0.25f) else Color.White.copy(alpha = 0.05f),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (selected) Color(0xFF6366F1) else Color.White.copy(alpha = 0.1f),
+                            ),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(typeLabel, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Text(
+                                        if (config.type == WatermarkType.TEXT) config.text else stringResource(R.string.layer_preview_image),
+                                        color = Color(0xFF94A3B8),
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                    )
+                                }
+                                if (uiState.watermarkConfigs.size > 1) {
+                                    IconButton(
+                                        onClick = {
+                                            viewModel.removeWatermark(index)
+                                            if (selectedWatermarkIndex >= uiState.watermarkConfigs.size - 1) {
+                                                selectedWatermarkIndex =
+                                                    (uiState.watermarkConfigs.size - 2).coerceAtLeast(0)
+                                            }
+                                        },
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFEF4444))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Button(
+                    onClick = {
+                        val newIndex = uiState.watermarkConfigs.size
+                        viewModel.addWatermark(WatermarkConfig(WatermarkType.TEXT, text = "Watermark"))
+                        selectedWatermarkIndex = newIndex
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.layer_add_text))
+                }
+            }
+        }
+    }
+
+    if (showSettingsSheet) {
+        val settingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showSettingsSheet = false },
+            sheetState = settingsSheetState,
+            containerColor = Color(0xFF0F172A),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    stringResource(R.string.editor_settings_title),
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                SettingsLinkRow(
+                    label = stringResource(R.string.btn_privacy_policy),
+                    onClick = {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, context.getString(R.string.privacy_policy_url).toUri()),
+                        )
+                    },
+                )
+                SettingsLinkRow(
+                    label = stringResource(R.string.btn_terms_service),
+                    onClick = {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, context.getString(R.string.terms_of_service_url).toUri()),
+                        )
+                    },
+                )
+                if (!uiState.isPremium) {
+                    Button(
+                        onClick = {
+                            showSettingsSheet = false
+                            onNavigateToSubscription()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.btn_view_plans))
+                    }
+                }
+            }
+        }
+    }
+    }
+}
+
+@Composable
+private fun SettingsLinkRow(label: String, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = Color.White.copy(alpha = 0.05f),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, color = Color.White, fontSize = 14.sp)
+            Icon(Icons.Default.OpenInNew, contentDescription = null, tint = Color(0xFF94A3B8))
+        }
+    }
+}
+
+@Composable
+fun EditorSelectMediaRow(
+    selectedCount: Int,
+    onSelectMedia: () -> Unit,
+) {
+    val label =
+        if (selectedCount == 0) {
+            stringResource(R.string.editor_select_media_add)
+        } else {
+            stringResource(R.string.editor_select_media_count, selectedCount)
+        }
+    Surface(
+        onClick = onSelectMedia,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = if (selectedCount == 0) Color(0xFF6366F1).copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (selectedCount == 0) Color(0xFF6366F1).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.1f),
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Default.AddPhotoAlternate,
+                    contentDescription = null,
+                    tint = if (selectedCount == 0) Color(0xFF818CF8) else Color.White.copy(alpha = 0.7f),
+                )
+                Text(
+                    label,
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.5f),
+            )
+        }
     }
 }
 
@@ -620,19 +944,23 @@ fun WatermarkOverlay(config: WatermarkConfig) {
                     )
                 }
                 WatermarkType.REMOVE -> {
-                    Box(
-                        modifier = Modifier
-                            .size((100 * config.scale).dp)
-                            .border(2.dp, Color.Red, RoundedCornerShape(8.dp))
-                            .background(Color.Black.copy(alpha = 0.6f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            "REMOVE",
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                    BoxWithConstraints {
+                        val boxW = maxWidth * RemovalRegion.WIDTH_RATIO * config.scale
+                        val boxH = maxHeight * RemovalRegion.HEIGHT_RATIO * config.scale
+                        Box(
+                            modifier = Modifier
+                                .size(boxW, boxH)
+                                .border(2.dp, Color(0xFF10B981), RoundedCornerShape(8.dp))
+                                .background(Color(0xFF10B981).copy(alpha = 0.25f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                stringResource(R.string.layer_type_remove),
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
                     }
                 }
             }

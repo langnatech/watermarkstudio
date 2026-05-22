@@ -20,15 +20,20 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
         composable("home") {
             HomeScreen(
                 onNavigateToAddWatermark = { navController.navigate("add_watermark") },
-                onNavigateToRemoveWatermark = { 
-                    // Removal mode is a premium-only feature!
-                    if (viewModel.uiState.value.isPremium) {
-                        navController.navigate("remove_watermark")
-                    } else {
-                        navController.navigate("subscription")
+                onNavigateToAddLogoWatermark = {
+                    viewModel.setPendingImageWatermarkFocus(true)
+                    navController.navigate("add_watermark")
+                },
+                onNavigateToRemoveWatermark = {
+                    navController.navigate("remove_watermark")
+                },
+                onNavigateToHistory = {
+                    viewModel.setPendingLibraryTab(true)
+                    navController.navigate("home") {
+                        popUpTo("home") { inclusive = true }
+                        launchSingleTop = true
                     }
                 },
-                onNavigateToHistory = { },
                 onNavigateToSubscription = { navController.navigate("subscription") },
                 viewModel = viewModel
             )

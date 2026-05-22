@@ -26,6 +26,7 @@ class GreetingScreenshotTest {
       MyApplicationTheme { 
         HomeScreen(
           onNavigateToAddWatermark = {},
+          onNavigateToAddLogoWatermark = {},
           onNavigateToRemoveWatermark = {},
           onNavigateToHistory = {},
           onNavigateToSubscription = {},

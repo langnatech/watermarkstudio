@@ -11,7 +11,19 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import com.watermarkstudio.billing.BillingProducts
+
+enum class RestorePurchaseResult {
+    SUCCESS,
+    NONE,
+    ERROR,
+}
+
+sealed class BillingUiEvent {
+    data class ProductUnavailable(val productId: String) : BillingUiEvent()
+    data object BillingNotReady : BillingUiEvent()
+    data class QueryFailed(val message: String) : BillingUiEvent()
+}
 
 class BillingManager(
     private val context: Context,
@@ -35,12 +47,23 @@ class BillingManager(
     private val _purchaseFlowFinishedEvent = MutableStateFlow<Boolean>(false)
     val purchaseFlowFinishedEvent: StateFlow<Boolean> = _purchaseFlowFinishedEvent.asStateFlow()
 
-    // Map plan internal IDs to actual external Google Play product IDs
-    val productIds = listOf(
-        "com.watermark.pro.weekly",
-        "com.watermark.pro.monthly",
-        "com.watermark.pro.yearly"
-    )
+    val productIds: List<String> = BillingProducts.ALL
+
+    private val _billingUiEvent = MutableStateFlow<BillingUiEvent?>(null)
+    val billingUiEvent: StateFlow<BillingUiEvent?> = _billingUiEvent.asStateFlow()
+
+    private val _restorePurchaseResult = MutableStateFlow<RestorePurchaseResult?>(null)
+    val restorePurchaseResult: StateFlow<RestorePurchaseResult?> = _restorePurchaseResult.asStateFlow()
+
+    private var restoreQueryInFlight = false
+
+    fun clearBillingUiEvent() {
+        _billingUiEvent.value = null
+    }
+
+    fun clearRestorePurchaseResult() {
+        _restorePurchaseResult.value = null
+    }
 
     init {
         initializeBillingClient()
@@ -136,11 +159,15 @@ class BillingManager(
         _purchaseFlowFinishedEvent.value = false
     }
 
-    fun queryPurchases() {
+    fun queryPurchases(forRestore: Boolean = false) {
         if (!billingClient.isReady) {
             Log.w(TAG, "queryPurchases: BillingClient is not ready.")
+            if (forRestore) {
+                _restorePurchaseResult.value = RestorePurchaseResult.ERROR
+            }
             return
         }
+        restoreQueryInFlight = forRestore
 
         // Query Active Subscriptions
         val params = QueryPurchasesParams.newBuilder()
@@ -159,9 +186,20 @@ class BillingManager(
                 if (!hasActiveSubscription) {
                     Log.d(TAG, "No active subscriptions found.")
                     onPremiumStatusChanged(false)
+                    if (restoreQueryInFlight) {
+                        _restorePurchaseResult.value = RestorePurchaseResult.NONE
+                        restoreQueryInFlight = false
+                    }
+                } else if (restoreQueryInFlight) {
+                    _restorePurchaseResult.value = RestorePurchaseResult.SUCCESS
+                    restoreQueryInFlight = false
                 }
             } else {
                 Log.e(TAG, "Failed querying purchases: ${billingResult.debugMessage}")
+                if (restoreQueryInFlight) {
+                    _restorePurchaseResult.value = RestorePurchaseResult.ERROR
+                    restoreQueryInFlight = false
+                }
             }
         }
     }
@@ -194,13 +232,14 @@ class BillingManager(
         if (!billingClient.isReady) {
             connectToPlayStore()
             Log.w(TAG, "BillingClient is not ready. Attemping connection restart.")
+            _billingUiEvent.value = BillingUiEvent.BillingNotReady
             return false
         }
 
         val productDetails = _products.value.find { it.productId == productId }
         if (productDetails == null) {
             Log.e(TAG, "No ProductDetails found for $productId. Cannot launch purchase.")
-            simulatePurchaseFallback(productId)
+            reportProductUnavailable(productId)
             return false
         }
 
@@ -221,10 +260,11 @@ class BillingManager(
         return billingResult.responseCode == BillingClient.BillingResponseCode.OK
     }
 
-    private fun simulatePurchaseFallback(productId: String) {
-        Log.w(TAG, "ProductDetails not found for $productId. Cannot launch purchase flow.")
+    private fun reportProductUnavailable(productId: String) {
+        Log.w(TAG, "ProductDetails not found for $productId. Configure SKU in Play Console.")
         scope.launch(Dispatchers.Main) {
             _purchaseCompletedEvent.value = false
+            _billingUiEvent.value = BillingUiEvent.ProductUnavailable(productId)
         }
     }
 }

@@ -6,6 +6,8 @@
 
 | 文件 | 说明 |
 |------|------|
+| `feature-graphic-1024x500.png` | Play 置顶大图（1024×500，PNG） |
+| `feature-graphic-1024x500.jpg` | Play 置顶大图（1024×500，JPEG） |
 | `index.html` | 首页导航 |
 | `privacy-policy.html` | **中英双语**隐私政策（填入 Play 控制台） |
 | `terms-of-service.html` | **中英双语**服务条款（应用内链接） |
@@ -71,3 +73,21 @@ https://liang.github.io/watermark-studio/privacy-policy.html
 - 每个章节标题为 **中英并列**（如 `1. Information We Collect / 我们收集哪些信息`）
 - 正文为 **左右双语卡片**（桌面端并排，手机端上下排列）
 - 顶部导航可跳转 `#zh` / `#en` 锚点
+
+## 应用生产验收（与根目录 README 同步）
+
+- 去水印（阶段二）：
+  - **STANDARD**：图片 TELEA；视频时序中值 + 无音频导出。
+  - **ADVANCED（Pro）**：图片 NS + seamlessClone；视频 MediaCodec 解码 → Farneback 光流（失败回退中值）→ 逐帧融合 → **保留原 AAC 音轨**。
+  - 勿在商店文案中写「全 AI 修复」；处理在设备本地完成。
+- Release AdMob ID：`app/src/release/res/values/admob.xml`。
+- Play 订阅 SKU 与 `BillingProducts.kt` 一致；法律页 URL 与本 Pages 部署地址一致。
+
+### 去水印 QA 要点
+
+| 检查项 | 期望 |
+|--------|------|
+| Pro 视频导出 | `MediaMetadataRetriever` 可读 duration；有音轨时听感正常 |
+| 免费视频 | 无原声、带应用角标 |
+| 运动背景 | ADVANCED 优于 STANDARD；极端运动可回退中值 |
+| 模拟器 | `error_remove_video_not_supported` |
