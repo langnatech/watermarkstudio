@@ -1,6 +1,11 @@
 package com.watermarkstudio.removal.video
 
 import android.graphics.Bitmap
+import android.graphics.ImageFormat
+import android.graphics.Rect
+import android.graphics.YuvImage
+import android.media.Image
+import java.io.ByteArrayOutputStream
 
 object VideoFrameUtils {
 
@@ -27,6 +32,58 @@ object VideoFrameUtils {
             }
         }
         return yuv
+    }
+
+    /** Converts [Image] YUV_420_888 to ARGB bitmap, respecting plane row/pixel stride. */
+    fun imageYuv420888ToBitmap(image: Image): Bitmap? {
+        val nv21 = yuv420888ToNv21(image) ?: return null
+        val yuv = YuvImage(nv21, ImageFormat.NV21, image.width, image.height, null)
+        val out = ByteArrayOutputStream()
+        yuv.compressToJpeg(Rect(0, 0, image.width, image.height), 92, out)
+        val jpeg = out.toByteArray()
+        return android.graphics.BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
+            ?.copy(Bitmap.Config.ARGB_8888, false)
+    }
+
+    private fun yuv420888ToNv21(image: Image): ByteArray? {
+        val planes = image.planes
+        if (planes.size < 3) return null
+        val width = image.width
+        val height = image.height
+        val nv21 = ByteArray(width * height + width * height / 2)
+        val yPlane = planes[0]
+        val uPlane = planes[1]
+        val vPlane = planes[2]
+        val yBuffer = yPlane.buffer
+        val yRowStride = yPlane.rowStride
+        val yPixelStride = yPlane.pixelStride
+        var outputOffset = 0
+        for (row in 0 until height) {
+            var inputOffset = row * yRowStride
+            for (col in 0 until width) {
+                nv21[outputOffset++] = yBuffer.get(inputOffset)
+                inputOffset += yPixelStride
+            }
+        }
+        val chromaHeight = height / 2
+        val chromaWidth = width / 2
+        val uBuffer = uPlane.buffer
+        val vBuffer = vPlane.buffer
+        val uRowStride = uPlane.rowStride
+        val vRowStride = vPlane.rowStride
+        val uPixelStride = uPlane.pixelStride
+        val vPixelStride = vPlane.pixelStride
+        for (row in 0 until chromaHeight) {
+            var uInput = row * uRowStride
+            var vInput = row * vRowStride
+            for (col in 0 until chromaWidth) {
+                nv21[outputOffset++] = vBuffer.get(vInput)
+                nv21[outputOffset++] = uBuffer.get(uInput)
+                uInput += uPixelStride
+                vInput += vPixelStride
+            }
+        }
+        return nv21
     }
 
     fun downscaleIfNeeded(bitmap: Bitmap, maxDim: Int): Bitmap {

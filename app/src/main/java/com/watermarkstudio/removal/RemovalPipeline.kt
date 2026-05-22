@@ -14,6 +14,7 @@ import com.watermarkstudio.model.MediaType
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.removal.image.ImageRemovalEngine
 import com.watermarkstudio.removal.video.VideoRemovalEngine
+import com.watermarkstudio.removal.video.VideoRemovalLimits
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -49,7 +50,7 @@ object RemovalPipeline {
                     context,
                     item.uri,
                     config,
-                    maxDurationMs,
+                    VideoRemovalLimits.clampClipDurationMs(maxDurationMs, isPremium),
                     if (isPremium) 1080 else 720,
                     isPremium,
                     quality,

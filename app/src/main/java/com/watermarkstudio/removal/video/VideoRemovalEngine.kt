@@ -33,6 +33,15 @@ object VideoRemovalEngine {
         if (!OpenCvBootstrap.ensureLoaded(context)) return@withContext null
         if (!RemovalCapability.supportsVideoRemoval(context)) return@withContext null
 
+        val clipMs =
+            if (maxDurationMs > 0L) {
+                maxDurationMs
+            } else {
+                VideoRemovalLimits.PRO_MAX_DURATION_MS
+            }
+        val baseFps = if (isPremium) 15 else if (quality == RemovalQuality.ADVANCED) 12 else 10
+        val sampling = VideoRemovalLimits.resolveSampling(baseFps, clipMs)
+
         fun report(stageStart: Float, stageEnd: Float, fraction: Float) {
             progress?.report(stageStart + (stageEnd - stageStart) * fraction.coerceIn(0f, 1f))
         }
@@ -43,12 +52,19 @@ object VideoRemovalEngine {
                 MediaCodecFrameDecoder.decode(
                     context,
                     uri,
-                    maxDurationMs,
+                    sampling.clipDurationMs,
                     maxDimension,
-                    targetFps = if (isPremium) 15 else 12,
+                    targetFps = sampling.targetFps,
                 )
             } else {
-                VideoFrameExtractor.extract(context, uri, maxDurationMs, maxDimension, targetFps = if (isPremium) 15 else 10)
+                VideoFrameExtractor.extract(
+                    context,
+                    uri,
+                    sampling.clipDurationMs,
+                    maxDimension,
+                    targetFps = sampling.targetFps,
+                    maxFrames = sampling.maxFrames,
+                )
                     ?.let { ext ->
                         DecodedVideoSequence(
                             bitmaps = ext.bitmaps,
@@ -91,8 +107,14 @@ object VideoRemovalEngine {
             if (isPremium) {
                 blended
             } else {
-                blended.map { drawTrialBadge(it) }
+                blended.map { frame ->
+                    val badged = drawTrialBadge(frame)
+                    if (badged !== frame) frame.recycle()
+                    badged
+                }
             }
+
+        val videoDurationUs = VideoRemovalLimits.videoDurationUs(withTrial.size, decoded.fps)
 
         report(0.75f, 1f, 0f)
         val tempFile = File(context.cacheDir, "remove_${System.currentTimeMillis()}.mp4")
@@ -104,7 +126,7 @@ object VideoRemovalEngine {
                         uri,
                         withTrial,
                         decoded.fps,
-                        decoded.clipDurationUs,
+                        videoDurationUs,
                         tempFile,
                         includeAudio = true,
                     )
@@ -112,7 +134,21 @@ object VideoRemovalEngine {
                     SlideshowVideoEncoder.encode(withTrial, decoded.fps, tempFile)
             }
         if (!exported && quality == RemovalQuality.ADVANCED) {
-            exported = SlideshowVideoEncoder.encode(withTrial, decoded.fps, tempFile)
+            val silentFile = File(context.cacheDir, "remove_silent_${System.currentTimeMillis()}.mp4")
+            if (SlideshowVideoEncoder.encode(withTrial, decoded.fps, silentFile)) {
+                exported =
+                    RemovalVideoRemuxer.muxVideoWithSourceAudio(
+                        context,
+                        silentFile,
+                        uri,
+                        tempFile,
+                        sampling.clipDurationMs,
+                    )
+            }
+            silentFile.delete()
+            if (!exported) {
+                exported = SlideshowVideoEncoder.encode(withTrial, decoded.fps, tempFile)
+            }
         }
         withTrial.forEach { if (!it.isRecycled) it.recycle() }
         report(0.75f, 1f, 1f)

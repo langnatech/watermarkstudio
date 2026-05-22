@@ -20,7 +20,7 @@ object VideoExportMuxer {
         sourceUri: Uri,
         frames: List<android.graphics.Bitmap>,
         fps: Float,
-        clipDurationUs: Long,
+        videoDurationUs: Long,
         outputFile: File,
         includeAudio: Boolean,
     ): Boolean {
@@ -84,7 +84,7 @@ object VideoExportMuxer {
                         if (!muxerStarted) {
                             videoTrack = muxer.addTrack(encoder.outputFormat)
                             if (includeAudio) {
-                                audioTrack = findAudioTrackIndex(context, sourceUri, muxer, clipDurationUs)
+                                audioTrack = findAudioTrackIndex(context, sourceUri, muxer)
                             }
                             muxer.start()
                             muxerStarted = true
@@ -104,7 +104,7 @@ object VideoExportMuxer {
             }
             if (!muxerStarted) return false
             if (includeAudio && audioTrack >= 0) {
-                copyAudioSamples(context, sourceUri, muxer, audioTrack, clipDurationUs)
+                copyAudioSamples(context, sourceUri, muxer, audioTrack, videoDurationUs)
             }
             return true
         } catch (e: Exception) {
@@ -128,7 +128,6 @@ object VideoExportMuxer {
         context: Context,
         uri: Uri,
         muxer: MediaMuxer,
-        @Suppress("UNUSED_PARAMETER") clipDurationUs: Long,
     ): Int {
         val extractor = MediaExtractor()
         return try {
@@ -154,7 +153,7 @@ object VideoExportMuxer {
         uri: Uri,
         muxer: MediaMuxer,
         audioTrackIndex: Int,
-        clipDurationUs: Long,
+        videoDurationUs: Long,
     ) {
         val extractor = MediaExtractor()
         try {
@@ -178,11 +177,18 @@ object VideoExportMuxer {
                 if (sampleSize < 0) break
                 val pts = extractor.sampleTime
                 if (firstPts < 0) firstPts = pts
-                if (pts - firstPts > clipDurationUs) break
+                val relPts = pts - firstPts
+                if (relPts > videoDurationUs) break
                 info.offset = 0
                 info.size = sampleSize
-                info.presentationTimeUs = pts - firstPts
-                info.flags = extractor.sampleFlags
+                info.presentationTimeUs = relPts
+                val sampleFlags = extractor.sampleFlags
+                info.flags =
+                    if (sampleFlags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
+                        0
+                    } else {
+                        sampleFlags
+                    }
                 muxer.writeSampleData(audioTrackIndex, buffer, info)
                 extractor.advance()
             }

@@ -80,6 +80,7 @@ https://liang.github.io/watermark-studio/privacy-policy.html
   - **STANDARD**：图片 TELEA；视频时序中值 + 无音频导出。
   - **ADVANCED（Pro）**：图片 NS + seamlessClone；视频 MediaCodec 解码 → Farneback 光流（失败回退中值）→ 逐帧融合 → **保留原 AAC 音轨**。
   - 勿在商店文案中写「全 AI 修复」；处理在设备本地完成。
+  - **阶段三**：`VideoRemovalLimits` 时长/帧数封顶；ADVANCED 导出失败时用 Media3 `RemovalVideoRemuxer` 合并原声。
 - Release AdMob ID：`app/src/release/res/values/admob.xml`。
 - Play 订阅 SKU 与 `BillingProducts.kt` 一致；法律页 URL 与本 Pages 部署地址一致。
 

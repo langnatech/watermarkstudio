@@ -20,6 +20,7 @@ object VideoFrameExtractor {
         maxDurationMs: Long,
         maxDimension: Int,
         targetFps: Int = 12,
+        maxFrames: Int = VideoRemovalLimits.MAX_FRAME_COUNT,
     ): ExtractedFrames? {
         val retriever = MediaMetadataRetriever()
         return try {
@@ -30,20 +31,21 @@ object VideoFrameExtractor {
             val clipMs = if (maxDurationMs > 0L) minOf(durationMs, maxDurationMs) else durationMs
             if (clipMs <= 0L) return null
 
-            val intervalUs = 1_000_000L / targetFps.coerceIn(4, 24)
+            val fps = targetFps.coerceIn(4, 24)
+            val intervalUs = 1_000_000L / fps
             val frames = mutableListOf<Bitmap>()
             var tUs = 0L
-            while (tUs <= clipMs * 1000L) {
+            while (tUs <= clipMs * 1000L && frames.size < maxFrames) {
                 val frame = retriever.getFrameAtTime(tUs, MediaMetadataRetriever.OPTION_CLOSEST)
                 if (frame != null) {
-                    frames.add(downscaleIfNeeded(frame, maxDimension))
+                    frames.add(VideoFrameUtils.downscaleIfNeeded(frame, maxDimension))
                 }
                 tUs += intervalUs
             }
             if (frames.isEmpty()) return null
             ExtractedFrames(
                 bitmaps = frames,
-                fps = targetFps.toFloat(),
+                fps = fps.toFloat(),
                 width = frames.first().width,
                 height = frames.first().height,
             )
@@ -56,18 +58,5 @@ object VideoFrameExtractor {
             } catch (_: Exception) {
             }
         }
-    }
-
-    private fun downscaleIfNeeded(bitmap: Bitmap, maxDim: Int): Bitmap {
-        val w = bitmap.width
-        val h = bitmap.height
-        val maxSide = maxOf(w, h)
-        if (maxSide <= maxDim) return bitmap
-        val scale = maxDim.toFloat() / maxSide
-        val nw = (w * scale).toInt().coerceAtLeast(1)
-        val nh = (h * scale).toInt().coerceAtLeast(1)
-        val scaled = Bitmap.createScaledBitmap(bitmap, nw, nh, true)
-        if (scaled != bitmap) bitmap.recycle()
-        return scaled
     }
 }

@@ -180,13 +180,8 @@ object MediaProcessor {
         maxDurationMs: Long = 0L,
         isPremium: Boolean = false
     ): Uri? {
-        val activeMaxDurationMs = if (isPremium) {
-            // Safety cap: max 5 minutes (300,000 ms) to avoid out-of-memory or on-device compiler block for longer videos
-            if (maxDurationMs <= 0L || maxDurationMs > 300000L) 300000L else maxDurationMs
-        } else {
-            // Free limit: strictly capped at 15 seconds
-            if (maxDurationMs <= 0L || maxDurationMs > 15000L) 15000L else maxDurationMs
-        }
+        val activeMaxDurationMs =
+            com.watermarkstudio.removal.video.VideoRemovalLimits.clampClipDurationMs(maxDurationMs, isPremium)
 
         val editRequestWithOutputPath = withContext(Dispatchers.IO) {
             val overlays = mutableListOf<TextureOverlay>()

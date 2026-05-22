@@ -21,7 +21,7 @@ class VideoExportMuxerInstrumentedTest {
                 sourceUri = android.net.Uri.EMPTY,
                 frames = emptyList(),
                 fps = 12f,
-                clipDurationUs = 1_000_000L,
+                videoDurationUs = 1_000_000L,
                 outputFile = out,
                 includeAudio = false,
             )

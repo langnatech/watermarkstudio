@@ -3,15 +3,12 @@ package com.watermarkstudio.removal.video
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.ImageFormat
-import android.graphics.Rect
-import android.graphics.YuvImage
 import android.media.Image
 import android.media.ImageReader
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
-import java.io.ByteArrayOutputStream
 /**
  * Decodes video via MediaCodec; falls back to [VideoFrameExtractor] on failure.
  */
@@ -24,8 +21,15 @@ object MediaCodecFrameDecoder {
         maxDimension: Int,
         targetFps: Int = 12,
     ): DecodedVideoSequence? {
-        return decodeWithMediaCodec(context, uri, maxDurationMs, maxDimension, targetFps)
-            ?: fallbackRetriever(context, uri, maxDurationMs, maxDimension, targetFps)
+        val clipMs =
+            if (maxDurationMs > 0L) {
+                maxDurationMs
+            } else {
+                VideoRemovalLimits.PRO_MAX_DURATION_MS
+            }
+        val plan = VideoRemovalLimits.resolveSampling(targetFps, clipMs)
+        return decodeWithMediaCodec(context, uri, plan.clipDurationMs, maxDimension, plan.targetFps, plan.maxFrames)
+            ?: fallbackRetriever(context, uri, plan.clipDurationMs, maxDimension, plan.targetFps, plan.maxFrames)
     }
 
     private fun fallbackRetriever(
@@ -34,9 +38,10 @@ object MediaCodecFrameDecoder {
         maxDurationMs: Long,
         maxDimension: Int,
         targetFps: Int,
+        maxFrames: Int,
     ): DecodedVideoSequence? {
         val extracted =
-            VideoFrameExtractor.extract(context, uri, maxDurationMs, maxDimension, targetFps)
+            VideoFrameExtractor.extract(context, uri, maxDurationMs, maxDimension, targetFps, maxFrames)
                 ?: return null
         val clipUs =
             if (maxDurationMs > 0L) {
@@ -59,6 +64,7 @@ object MediaCodecFrameDecoder {
         maxDurationMs: Long,
         maxDimension: Int,
         targetFps: Int,
+        maxFrames: Int,
     ): DecodedVideoSequence? {
         val extractor = MediaExtractor()
         var decoder: MediaCodec? = null
@@ -101,7 +107,9 @@ object MediaCodecFrameDecoder {
                 }
             if (clipUs <= 0L) return null
 
-            imageReader = ImageReader.newInstance(width, height, ImageFormat.YUV_420_888, 8)
+            val readerWidth = if (rotation == 90 || rotation == 270) height else width
+            val readerHeight = if (rotation == 90 || rotation == 270) width else height
+            imageReader = ImageReader.newInstance(readerWidth, readerHeight, ImageFormat.YUV_420_888, 8)
             val mime = format.getString(MediaFormat.KEY_MIME)!!
             decoder = MediaCodec.createDecoderByType(mime)
             decoder.configure(format, imageReader.surface, null, 0)
@@ -114,7 +122,7 @@ object MediaCodecFrameDecoder {
             var inputDone = false
             var outputDone = false
 
-            while (!outputDone) {
+            decodeLoop@ while (!outputDone) {
                 if (!inputDone) {
                     val inIndex = decoder.dequeueInputBuffer(10_000)
                     if (inIndex >= 0) {
@@ -162,6 +170,10 @@ object MediaCodecFrameDecoder {
                                     }
                                 }
                                 nextSampleUs += frameIntervalUs
+                                if (bitmaps.size >= maxFrames) {
+                                    outputDone = true
+                                    break@decodeLoop
+                                }
                             }
                         }
                         decoder.releaseOutputBuffer(outIndex, true)
@@ -200,23 +212,7 @@ object MediaCodecFrameDecoder {
     }
 
     private fun imageToBitmap(image: Image, rotation: Int): Bitmap? {
-        val planes = image.planes
-        if (planes.size < 3) return null
-        val yBuffer = planes[0].buffer
-        val uBuffer = planes[1].buffer
-        val vBuffer = planes[2].buffer
-        val ySize = yBuffer.remaining()
-        val uSize = uBuffer.remaining()
-        val vSize = vBuffer.remaining()
-        val nv21 = ByteArray(ySize + uSize + vSize)
-        yBuffer.get(nv21, 0, ySize)
-        vBuffer.get(nv21, ySize, vSize)
-        uBuffer.get(nv21, ySize + vSize, uSize)
-        val yuv = YuvImage(nv21, ImageFormat.NV21, image.width, image.height, null)
-        val out = ByteArrayOutputStream()
-        yuv.compressToJpeg(Rect(0, 0, image.width, image.height), 95, out)
-        val jpeg = out.toByteArray()
-        var bmp = android.graphics.BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size) ?: return null
+        var bmp = VideoFrameUtils.imageYuv420888ToBitmap(image) ?: return null
         if (rotation != 0) {
             val matrix = android.graphics.Matrix().apply { postRotate(rotation.toFloat()) }
             val rotated =
@@ -224,6 +220,6 @@ object MediaCodecFrameDecoder {
             if (rotated != bmp) bmp.recycle()
             bmp = rotated
         }
-        return bmp.copy(Bitmap.Config.ARGB_8888, false)
+        return bmp
     }
 }
