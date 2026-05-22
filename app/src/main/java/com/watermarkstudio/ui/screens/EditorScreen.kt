@@ -5,6 +5,11 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -44,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import android.graphics.Bitmap
+import com.watermarkstudio.model.ExportStatus
 import com.watermarkstudio.model.MediaType
 import com.watermarkstudio.model.MediaItem
 import com.watermarkstudio.removal.preview.RemovalPreviewHelper
@@ -51,6 +57,7 @@ import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.model.WatermarkType
 import com.watermarkstudio.ui.components.InteractiveWatermarkPreview
 import com.watermarkstudio.viewmodel.WatermarkViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -139,8 +146,24 @@ fun EditorScreen(
 
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let {
-            snackbarHostState.showSnackbar(it)
+            snackbarHostState.showSnackbar(
+                message = it,
+                duration = SnackbarDuration.Long,
+            )
             viewModel.dismissError()
+        }
+    }
+
+    LaunchedEffect(uiState.exportStatus) {
+        when (uiState.exportStatus) {
+            ExportStatus.SUCCESS,
+            ExportStatus.PARTIAL,
+            ExportStatus.FAILED,
+            -> {
+                delay(8_000)
+                viewModel.clearExportStatus()
+            }
+            else -> Unit
         }
     }
 
@@ -487,8 +510,63 @@ fun EditorScreen(
                             }
                         }
 
+                        if (uiState.isProcessing) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                LinearProgressIndicator(
+                                    progress = { uiState.processingProgress.coerceIn(0f, 1f) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(3.dp)),
+                                    color = Color(0xFF818CF8),
+                                    trackColor = Color.White.copy(alpha = 0.12f),
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        stringResource(R.string.processing_batch),
+                                        color = Color(0xFF94A3B8),
+                                        fontSize = 12.sp,
+                                    )
+                                    if (uiState.processingItemTotal > 0) {
+                                        Text(
+                                            stringResource(
+                                                R.string.export_progress_item,
+                                                uiState.processingItemIndex,
+                                                uiState.processingItemTotal,
+                                            ),
+                                            color = Color(0xFF818CF8),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        AnimatedVisibility(
+                            visible =
+                                uiState.exportStatus == ExportStatus.SUCCESS ||
+                                    uiState.exportStatus == ExportStatus.PARTIAL ||
+                                    uiState.exportStatus == ExportStatus.FAILED,
+                            enter = fadeIn() + slideInVertically { it / 2 },
+                            exit = fadeOut() + slideOutVertically { it / 2 },
+                        ) {
+                            ExportResultBanner(
+                                status = uiState.exportStatus,
+                                message = uiState.exportStatusMessage,
+                                onDismiss = { viewModel.clearExportStatus() },
+                            )
+                        }
+
                         Button(
-                            onClick = startExport,
+                            onClick = {
+                                if (!uiState.isProcessing) {
+                                    startExport()
+                                }
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(52.dp),
@@ -498,8 +576,12 @@ fun EditorScreen(
                                 ButtonDefaults.buttonColors(
                                     containerColor = Color(0xFF6366F1),
                                     contentColor = Color.White,
-                                    disabledContainerColor = Color(0xFF1E293B),
-                                    disabledContentColor = Color.White.copy(alpha = 0.4f),
+                                    disabledContainerColor = if (uiState.isProcessing) {
+                                        Color(0xFF4F46E5)
+                                    } else {
+                                        Color(0xFF1E293B)
+                                    },
+                                    disabledContentColor = Color.White.copy(alpha = 0.9f),
                                 ),
                         ) {
                             if (uiState.isProcessing) {
@@ -508,19 +590,31 @@ fun EditorScreen(
                                     color = Color.White,
                                     strokeWidth = 2.dp,
                                 )
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    stringResource(R.string.btn_export_processing),
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "${(uiState.processingProgress * 100).toInt()}%",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Black,
+                                )
                             } else {
                                 Icon(
                                     Icons.Default.AutoFixHigh,
                                     contentDescription = null,
                                     modifier = Modifier.size(20.dp),
                                 )
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    stringResource(R.string.btn_process_export),
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
                             }
-                            Spacer(Modifier.width(10.dp))
-                            Text(
-                                stringResource(R.string.btn_process_export),
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
                         }
                     }
                 }
@@ -699,23 +793,15 @@ fun EditorScreen(
                 }
             }
 
-            // Processing Overlay
-            if (uiState.isProcessing) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = Color.Black.copy(alpha = 0.8f)
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(progress = { uiState.processingProgress }, color = MaterialTheme.colorScheme.primary, strokeWidth = 6.dp, modifier = Modifier.size(80.dp))
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Text(stringResource(R.string.processing_batch), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Text("${(uiState.processingProgress * 100).toInt()}%", color = MaterialTheme.colorScheme.primary, fontSize = 24.sp, fontWeight = FontWeight.Black)
-                    }
-                }
-            }
+        }
+    }
+
+        if (uiState.isProcessing) {
+            ExportProcessingOverlay(
+                progress = uiState.processingProgress,
+                itemIndex = uiState.processingItemIndex,
+                itemTotal = uiState.processingItemTotal,
+            )
         }
     }
 
@@ -855,7 +941,6 @@ fun EditorScreen(
             }
         }
     }
-    }
 }
 
 @Composable
@@ -875,6 +960,127 @@ private fun SettingsLinkRow(label: String, onClick: () -> Unit) {
         ) {
             Text(label, color = Color.White, fontSize = 14.sp)
             Icon(Icons.Default.OpenInNew, contentDescription = null, tint = Color(0xFF94A3B8))
+        }
+    }
+}
+
+@Composable
+private fun ExportProcessingOverlay(
+    progress: Float,
+    itemIndex: Int,
+    itemTotal: Int,
+) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.78f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+            modifier = Modifier.padding(32.dp),
+        ) {
+            CircularProgressIndicator(
+                progress = { progress.coerceIn(0f, 1f) },
+                color = Color(0xFF818CF8),
+                strokeWidth = 6.dp,
+                modifier = Modifier.size(88.dp),
+            )
+            Text(
+                stringResource(R.string.processing_batch),
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                "${(progress * 100).toInt()}%",
+                color = Color(0xFF818CF8),
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Black,
+            )
+            if (itemTotal > 0) {
+                Text(
+                    stringResource(R.string.export_progress_item, itemIndex, itemTotal),
+                    color = Color(0xFF94A3B8),
+                    fontSize = 14.sp,
+                )
+            }
+            LinearProgressIndicator(
+                progress = { progress.coerceIn(0f, 1f) },
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                color = Color(0xFF6366F1),
+                trackColor = Color.White.copy(alpha = 0.15f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExportResultBanner(
+    status: ExportStatus,
+    message: String?,
+    onDismiss: () -> Unit,
+) {
+    val accentColor =
+        when (status) {
+            ExportStatus.SUCCESS -> Color(0xFF10B981)
+            ExportStatus.PARTIAL -> Color(0xFFFBBF24)
+            ExportStatus.FAILED -> Color(0xFFEF4444)
+            else -> Color(0xFF64748B)
+        }
+    val title =
+        when (status) {
+            ExportStatus.SUCCESS -> stringResource(R.string.export_status_success_title)
+            ExportStatus.PARTIAL -> stringResource(R.string.export_status_partial_title)
+            ExportStatus.FAILED -> stringResource(R.string.export_status_failed_title)
+            else -> ""
+        }
+    val icon =
+        when (status) {
+            ExportStatus.SUCCESS -> Icons.Default.CheckCircle
+            ExportStatus.PARTIAL -> Icons.Default.Warning
+            ExportStatus.FAILED -> Icons.Default.Error
+            else -> Icons.Default.Info
+        }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = accentColor.copy(alpha = 0.12f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, accentColor.copy(alpha = 0.45f)),
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(28.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    message.orEmpty(),
+                    color = Color(0xFFCBD5E1),
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                )
+            }
+            TextButton(onClick = onDismiss) {
+                Text(
+                    stringResource(R.string.export_status_dismiss),
+                    color = accentColor,
+                    fontSize = 12.sp,
+                )
+            }
         }
     }
 }
