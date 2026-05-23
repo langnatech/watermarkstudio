@@ -54,7 +54,10 @@ import com.watermarkstudio.model.MediaType
 import com.watermarkstudio.model.MediaItem
 import com.watermarkstudio.removal.preview.RemovalPreviewHelper
 import com.watermarkstudio.model.WatermarkConfig
+import com.watermarkstudio.model.WatermarkFontFamily
 import com.watermarkstudio.model.WatermarkType
+import com.watermarkstudio.ui.components.watermarkDisplayText
+import com.watermarkstudio.ui.components.watermarkTextStyle
 import com.watermarkstudio.ui.components.DraggableWatermarkOverlay
 import com.watermarkstudio.ui.components.InteractiveWatermarkPreview
 import com.watermarkstudio.viewmodel.WatermarkViewModel
@@ -203,7 +206,7 @@ fun EditorScreen(
             imageWatermarkLauncher.launch("image/*")
         }
         if (viewModel.consumePendingMultilayer()) {
-            viewModel.addWatermark(WatermarkConfig(WatermarkType.TEXT, text = "Layer 2"))
+            viewModel.addWatermark(WatermarkConfig(WatermarkType.TEXT, text = ""))
             selectedWatermarkIndex = 1
             showLayersSheet = true
         }
@@ -391,7 +394,7 @@ fun EditorScreen(
                                                 selectedWatermarkIndex = textIndex
                                             } else {
                                                 val newIndex = uiState.watermarkConfigs.size
-                                                viewModel.addWatermark(WatermarkConfig(WatermarkType.TEXT, text = "Watermark"))
+                                                viewModel.addWatermark(WatermarkConfig(WatermarkType.TEXT, text = ""))
                                                 selectedWatermarkIndex = newIndex
                                             }
                                         },
@@ -853,7 +856,11 @@ fun EditorScreen(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(typeLabel, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                     Text(
-                                        if (config.type == WatermarkType.TEXT) config.text else stringResource(R.string.layer_preview_image),
+                                        if (config.type == WatermarkType.TEXT) {
+                                            config.watermarkDisplayText(stringResource(R.string.hint_enter_watermark))
+                                        } else {
+                                            stringResource(R.string.layer_preview_image)
+                                        },
                                         color = Color(0xFF94A3B8),
                                         fontSize = 12.sp,
                                         maxLines = 1,
@@ -862,10 +869,11 @@ fun EditorScreen(
                                 if (uiState.watermarkConfigs.size > 1) {
                                     IconButton(
                                         onClick = {
+                                            val oldSelected = selectedWatermarkIndex
                                             viewModel.removeWatermark(index)
-                                            if (selectedWatermarkIndex >= uiState.watermarkConfigs.size - 1) {
-                                                selectedWatermarkIndex =
-                                                    (uiState.watermarkConfigs.size - 2).coerceAtLeast(0)
+                                            selectedWatermarkIndex = when {
+                                                index < oldSelected -> oldSelected - 1
+                                                else -> oldSelected.coerceAtMost(uiState.watermarkConfigs.size - 1)
                                             }
                                         },
                                     ) {
@@ -879,7 +887,7 @@ fun EditorScreen(
                 Button(
                     onClick = {
                         val newIndex = uiState.watermarkConfigs.size
-                        viewModel.addWatermark(WatermarkConfig(WatermarkType.TEXT, text = "Watermark"))
+                        viewModel.addWatermark(WatermarkConfig(WatermarkType.TEXT, text = ""))
                         selectedWatermarkIndex = newIndex
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -1251,11 +1259,8 @@ fun WatermarkOverlay(config: WatermarkConfig) {
             when (config.type) {
                 WatermarkType.TEXT -> {
                     Text(
-                        config.text,
-                        color = Color.White.copy(alpha = 0.6f),
-                        fontSize = (14 * config.scale).sp,
-                        fontWeight = FontWeight.Medium,
-                        letterSpacing = 2.sp
+                        text = config.watermarkDisplayText(stringResource(R.string.hint_enter_watermark)),
+                        style = config.watermarkTextStyle(),
                     )
                 }
                 WatermarkType.IMAGE -> {
@@ -1290,10 +1295,27 @@ fun WatermarkOverlay(config: WatermarkConfig) {
     }
 }
 
+private val watermarkTextColorPresets =
+    listOf(
+        0xFFFFFFFF.toInt(),
+        0xFF000000.toInt(),
+        0xFFFF3B30.toInt(),
+        0xFFFFCC00.toInt(),
+        0xFF34C759.toInt(),
+        0xFF007AFF.toInt(),
+    )
+
 @Composable
 fun WatermarkConfigTools(config: WatermarkConfig, onUpdate: (WatermarkConfig) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (config.type == WatermarkType.TEXT) {
+            Text(
+                stringResource(R.string.text_style_lbl),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                color = Color(0xFF6366F1),
+                letterSpacing = 1.sp,
+            )
             OutlinedTextField(
                 value = config.text,
                 onValueChange = { onUpdate(config.copy(text = it)) },
@@ -1317,8 +1339,82 @@ fun WatermarkConfigTools(config: WatermarkConfig, onUpdate: (WatermarkConfig) ->
                 ),
                 textStyle = LocalTextStyle.current.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold)
             )
+
+            Text(
+                stringResource(R.string.font_family_lbl),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF94A3B8),
+            )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(WatermarkFontFamily.entries.toList()) { family ->
+                    val selected = config.fontFamily == family
+                    val labelRes =
+                        when (family) {
+                            WatermarkFontFamily.SANS -> R.string.font_sans
+                            WatermarkFontFamily.SERIF -> R.string.font_serif
+                            WatermarkFontFamily.MONOSPACE -> R.string.font_mono
+                            WatermarkFontFamily.BOLD -> R.string.font_bold
+                        }
+                    FilterChip(
+                        selected = selected,
+                        onClick = { onUpdate(config.copy(fontFamily = family)) },
+                        label = { Text(stringResource(labelRes), fontSize = 12.sp) },
+                        colors =
+                            FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Color(0xFF6366F1),
+                                selectedLabelColor = Color.White,
+                            ),
+                    )
+                }
+            }
+
+            Text(
+                stringResource(R.string.text_color_lbl),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF94A3B8),
+            )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(watermarkTextColorPresets) { preset ->
+                    val selected = (config.color and 0x00FFFFFF) == (preset and 0x00FFFFFF)
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Color(preset))
+                                .border(
+                                    width = if (selected) 2.dp else 1.dp,
+                                    color = if (selected) Color(0xFF818CF8) else Color.White.copy(alpha = 0.2f),
+                                    shape = CircleShape,
+                                )
+                                .clickable { onUpdate(config.copy(color = preset)) },
+                    )
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    stringResource(R.string.text_size_sp_format, config.textSizeSp.toInt()),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF94A3B8),
+                )
+                Slider(
+                    value = config.textSizeSp,
+                    onValueChange = { onUpdate(config.copy(textSizeSp = it)) },
+                    valueRange = 12f..72f,
+                    colors =
+                        SliderDefaults.colors(
+                            thumbColor = Color.White,
+                            activeTrackColor = Color(0xFF6366F1),
+                            inactiveTrackColor = Color.White.copy(alpha = 0.1f),
+                        ),
+                )
+            }
         }
-        
+
         Text(
             stringResource(R.string.pos_layout_header),
             fontSize = 11.sp,
@@ -1359,25 +1455,28 @@ fun WatermarkConfigTools(config: WatermarkConfig, onUpdate: (WatermarkConfig) ->
             )
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    stringResource(R.string.size_scale_format, config.scale),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF94A3B8),
+        if (config.type != WatermarkType.TEXT) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        stringResource(R.string.size_scale_format, config.scale),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF94A3B8),
+                    )
+                }
+                Slider(
+                    value = config.scale,
+                    onValueChange = { onUpdate(config.copy(scale = it)) },
+                    valueRange = 0.1f..3f,
+                    colors =
+                        SliderDefaults.colors(
+                            thumbColor = Color.White,
+                            activeTrackColor = Color(0xFF6366F1),
+                            inactiveTrackColor = Color.White.copy(alpha = 0.1f),
+                        ),
                 )
             }
-            Slider(
-                value = config.scale,
-                onValueChange = { onUpdate(config.copy(scale = it)) },
-                valueRange = 0.1f..3f,
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.White,
-                    activeTrackColor = Color(0xFF6366F1),
-                    inactiveTrackColor = Color.White.copy(alpha = 0.1f)
-                )
-            )
         }
     }
 }

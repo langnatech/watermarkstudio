@@ -217,7 +217,7 @@ class WatermarkViewModel : ViewModel() {
                     scale = 1.2f,
                 )
             } else {
-                WatermarkConfig(WatermarkType.TEXT, text = "Watermark")
+                WatermarkConfig(WatermarkType.TEXT, text = "")
             }
         _uiState.value = _uiState.value.copy(
             selectedMedia = emptyList(),
@@ -426,6 +426,8 @@ class WatermarkViewModel : ViewModel() {
             }
             val removeOnly = configs.all { it.type == WatermarkType.REMOVE }
             val removeConfig = configs.firstOrNull { it.type == WatermarkType.REMOVE }
+            val exportConfigs = watermarkConfigsForExport(configs)
+            val ignoredRemoveLayers = !removeOnly && exportConfigs.size < configs.size
 
             val processed = mutableListOf<Uri>()
             var failedCount = 0
@@ -452,17 +454,8 @@ class WatermarkViewModel : ViewModel() {
                                 if (item.type == MediaType.VIDEO &&
                                     !com.watermarkstudio.removal.RemovalCapability.supportsVideoRemoval(context)
                                 ) {
-                                    val msg =
-                                        context.getString(R.string.error_remove_video_not_supported)
-                                    _uiState.value =
-                                        _uiState.value.copy(
-                                            isProcessing = false,
-                                            exportStatus = ExportStatus.FAILED,
-                                            exportStatusMessage = msg,
-                                            errorMessage = msg,
-                                        )
-                                    return@launch
-                                }
+                                    null
+                                } else {
                                 val itemBase = index.toFloat() / items.size
                                 val itemSpan = 1f / items.size.coerceAtLeast(1)
                                 com.watermarkstudio.removal.RemovalPipeline.processItem(
@@ -480,18 +473,19 @@ class WatermarkViewModel : ViewModel() {
                                             )
                                     },
                                 )
+                                }
                             } else if (item.type == MediaType.IMAGE) {
                                 com.watermarkstudio.util.MediaProcessor.processImage(
                                     context,
                                     item.uri,
-                                    configs,
+                                    exportConfigs,
                                     _uiState.value.isPremium,
                                 )
                             } else {
                                 com.watermarkstudio.util.MediaProcessor.processVideo(
                                     context,
                                     item.uri,
-                                    configs,
+                                    exportConfigs,
                                     maxDurMs,
                                     _uiState.value.isPremium,
                                 )
@@ -503,27 +497,14 @@ class WatermarkViewModel : ViewModel() {
                             Log.e("WatermarkVM", "Processing returned null for ${item.name}")
                         }
                     } catch (t: Throwable) {
+                        failedCount++
                         Log.e("WatermarkVM", "Error processing item: ${item.name}", t)
-                        val msg =
-                            context.getString(
-                                R.string.export_error_item_failed,
-                                item.name,
-                            )
-                        _uiState.value =
-                            _uiState.value.copy(
-                                isProcessing = false,
-                                exportStatus = ExportStatus.FAILED,
-                                exportStatusMessage = msg,
-                                errorMessage = msg,
-                                processingProgress = (index + 1).toFloat() / items.size,
-                            )
-                        return@launch
                     }
 
                     _uiState.value = _uiState.value.copy(processingProgress = (index + 1).toFloat() / items.size)
                 }
 
-                val (exportStatus, statusMessage, errorMessage) =
+                val (exportStatus, baseStatusMessage, baseErrorMessage) =
                     when {
                         processed.isEmpty() ->
                             Triple(
@@ -555,6 +536,19 @@ class WatermarkViewModel : ViewModel() {
                                 null,
                             )
                     }
+                val removeLayersNote =
+                    if (ignoredRemoveLayers && processed.isNotEmpty()) {
+                        context.getString(R.string.export_warning_remove_layers_ignored)
+                    } else {
+                        null
+                    }
+                val statusMessage =
+                    if (removeLayersNote != null) {
+                        "$baseStatusMessage $removeLayersNote"
+                    } else {
+                        baseStatusMessage
+                    }
+                val errorMessage = baseErrorMessage
 
                 val successBatchId =
                     if (exportStatus == ExportStatus.SUCCESS) {
@@ -593,4 +587,7 @@ class WatermarkViewModel : ViewModel() {
             }
         }
     }
+
+    private fun watermarkConfigsForExport(configs: List<WatermarkConfig>): List<WatermarkConfig> =
+        configs.filter { it.type != WatermarkType.REMOVE }
 }

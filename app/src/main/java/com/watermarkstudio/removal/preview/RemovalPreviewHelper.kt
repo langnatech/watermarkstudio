@@ -57,24 +57,27 @@ object RemovalPreviewHelper {
                 }
                 RemovalQuality.ADVANCED -> {
                     val tmp = org.opencv.core.Mat()
-                    org.opencv.photo.Photo.inpaint(src, mask, tmp, 5.0, org.opencv.photo.Photo.INPAINT_NS)
                     val feather =
                         com.watermarkstudio.removal.mask.MaskGenerator.createFeatheredMaskMat(
                             bitmap.width,
                             bitmap.height,
                             config,
                         )
-                    com.watermarkstudio.removal.SeamlessBlendHelper.seamlessCloneInpaint(
-                        src,
-                        tmp,
-                        feather,
-                        bitmap.width,
-                        bitmap.height,
-                        config,
-                        dst,
-                    )
-                    tmp.release()
-                    feather.release()
+                    try {
+                        org.opencv.photo.Photo.inpaint(src, mask, tmp, 5.0, org.opencv.photo.Photo.INPAINT_NS)
+                        com.watermarkstudio.removal.SeamlessBlendHelper.seamlessCloneInpaint(
+                            src,
+                            tmp,
+                            feather,
+                            bitmap.width,
+                            bitmap.height,
+                            config,
+                            dst,
+                        )
+                    } finally {
+                        tmp.release()
+                        feather.release()
+                    }
                 }
             }
             if (dst.channels() == 3) {

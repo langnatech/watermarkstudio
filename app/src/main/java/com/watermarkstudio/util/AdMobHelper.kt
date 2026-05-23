@@ -76,6 +76,9 @@ fun AdMobBannerAd(
                 loadAd(adRequest)
             }
         },
+        onRelease = { adView ->
+            adView.destroy()
+        },
         update = { adView ->
             // AdView properties update logic if needed
         }
@@ -123,8 +126,8 @@ object InterstitialAdLoader {
                 override fun onAdDismissedFullScreenContent() {
                     Log.d(TAG, "Interstitial ad dismissed fullscreen.")
                     mInterstitialAd = null
-                    // Reload for next usage
-                    loadAd(activity)
+                    // Reload for next usage using applicationContext to avoid Activity leak
+                    loadAd(activity.applicationContext)
                     onAdClosed()
                 }
 

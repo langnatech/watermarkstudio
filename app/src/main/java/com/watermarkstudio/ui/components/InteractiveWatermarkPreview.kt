@@ -76,16 +76,13 @@ fun InteractiveWatermarkPreview(
         val canvasWidthPx = with(density) { canvasW.roundToPx().toFloat() }
         val canvasHeightPx = with(density) { canvasH.roundToPx().toFloat() }
 
+        val hint = stringResource(R.string.hint_enter_watermark)
         val textSizePx =
-            remember(config.text, config.scale) {
+            remember(config.text, config.textSizeSp, config.fontFamily, config.color, config.opacity) {
                 val result =
                     textMeasurer.measure(
-                        text = config.text.ifBlank { " " },
-                        style =
-                            TextStyle(
-                                fontSize = (14f * config.scale).sp,
-                                fontWeight = FontWeight.Medium,
-                            ),
+                        text = config.watermarkDisplayText(hint),
+                        style = config.watermarkTextStyle(),
                         constraints =
                             Constraints(
                                 maxWidth = with(density) { canvasW.roundToPx() },
@@ -253,11 +250,9 @@ private fun WatermarkOverlayChip(
         when (config.type) {
             WatermarkType.TEXT ->
                 Text(
-                    text = config.text.ifBlank { stringResource(R.string.hint_enter_watermark) },
-                    color = Color.White.copy(alpha = config.opacity),
-                    fontSize = (14 * config.scale).sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 2,
+                    text = config.watermarkDisplayText(stringResource(R.string.hint_enter_watermark)),
+                    style = config.watermarkTextStyle(),
+                    maxLines = 3,
                 )
             WatermarkType.IMAGE ->
                 AsyncImage(

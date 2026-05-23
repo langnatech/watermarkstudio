@@ -67,6 +67,7 @@
     <string name="export_status_success_desc">%1$d file(s) saved to your gallery.</string>
     <string name="export_status_partial_title">Partially exported</string>
     <string name="export_status_partial_desc">Saved %1$d of %2$d files. Some items could not be processed.</string>
+    <string name="export_warning_remove_layers_ignored">Remove-region layers were skipped (add-watermark mode only applies text/image layers).</string>
     <string name="export_status_failed_title">Export failed</string>
     <string name="export_status_failed_desc">Could not process the selected media. Check the format and try again.</string>
     <string name="export_error_no_media">Please select at least one photo or video.</string>
@@ -88,6 +89,13 @@
     <string name="opacity_pct_format">Opacity (%1$d%%)</string>
     <string name="text_style_lbl">TEXT STYLE &amp; CONFIG</string>
     <string name="hint_enter_watermark">Enter watermark text</string>
+    <string name="font_family_lbl">Font</string>
+    <string name="font_sans">Sans</string>
+    <string name="font_serif">Serif</string>
+    <string name="font_mono">Mono</string>
+    <string name="font_bold">Bold</string>
+    <string name="text_color_lbl">Text color</string>
+    <string name="text_size_sp_format">Font size (%1$d sp)</string>
     <string name="video_export_duration_lbl">VIDEO EXPORT DURATION</string>
     <string name="video_restricted_duration_desc">Free exports are capped at 15s. Upgrade to Pro to remove limits</string>
     <string name="watermark_removed_snack">Watermark removed.</string>

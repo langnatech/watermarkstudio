@@ -57,11 +57,23 @@ object ImageRemovalEngine {
                 }
                 RemovalQuality.ADVANCED -> {
                     val tmp = Mat()
-                    Photo.inpaint(src, mask, tmp, INPAINT_RADIUS, Photo.INPAINT_NS)
-                    val feather = MaskGenerator.createFeatheredMaskMat(bitmap.width, bitmap.height, config)
-                    SeamlessBlendHelper.seamlessCloneInpaint(src, tmp, feather, bitmap.width, bitmap.height, config, dst)
-                    tmp.release()
-                    feather.release()
+                    val feather =
+                        MaskGenerator.createFeatheredMaskMat(bitmap.width, bitmap.height, config)
+                    try {
+                        Photo.inpaint(src, mask, tmp, INPAINT_RADIUS, Photo.INPAINT_NS)
+                        SeamlessBlendHelper.seamlessCloneInpaint(
+                            src,
+                            tmp,
+                            feather,
+                            bitmap.width,
+                            bitmap.height,
+                            config,
+                            dst,
+                        )
+                    } finally {
+                        tmp.release()
+                        feather.release()
+                    }
                 }
             }
             if (dst.channels() == 3) {

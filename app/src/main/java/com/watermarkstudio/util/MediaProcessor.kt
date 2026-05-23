@@ -1,12 +1,9 @@
 package com.watermarkstudio.util
 
-import android.content.ContentValues
 import android.content.Context
 import android.graphics.*
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
 import android.text.SpannableString
 import android.media.MediaCodecList
 import android.media.MediaFormat
@@ -61,32 +58,36 @@ object MediaProcessor {
                     inMutable = true
                 }
 
-                val rawBitmap = context.contentResolver.openInputStream(uri)?.use { 
+                val rawBitmap = context.contentResolver.openInputStream(uri)?.use {
                     BitmapFactory.decodeStream(it, null, decodeOptions)
                 } ?: return@withContext null
 
-                val bitmap = if (rawBitmap.isMutable) rawBitmap else {
-                    val copied = rawBitmap.copy(Bitmap.Config.ARGB_8888, true)
-                    rawBitmap.recycle()
-                    copied
-                } ?: return@withContext null
+                val bitmap =
+                    try {
+                        if (rawBitmap.isMutable) {
+                            rawBitmap
+                        } else {
+                            val copied = rawBitmap.copy(Bitmap.Config.ARGB_8888, true)
+                            copied
+                        }
+                    } finally {
+                        if (!rawBitmap.isMutable) {
+                            rawBitmap.recycle()
+                        }
+                    } ?: return@withContext null
 
                 val canvas = Canvas(bitmap)
                 
                 configs.forEach { config ->
                     when (config.type) {
                         WatermarkType.TEXT -> {
-                            val paint = Paint().apply {
-                                color = if (config.color != -1) config.color else Color.WHITE
-                                alpha = (config.opacity * 255).toInt()
-                                textSize = bitmap.width * 0.05f * config.scale
-                                isAntiAlias = true
-                                setShadowLayer(2f, 1f, 1f, Color.BLACK)
-                            }
-                            // Calculate position based on percentages (defaulting to bottom right area for now)
-                            val xPos = bitmap.width * (config.x / 100f)
-                            val yPos = bitmap.height * (config.y / 100f)
-                            canvas.drawText(config.text, xPos, yPos, paint)
+                            TextWatermarkRenderer.drawOnCanvas(
+                                canvas,
+                                config,
+                                context,
+                                bitmap.width,
+                                bitmap.height,
+                            )
                         }
                         WatermarkType.IMAGE -> {
                             config.imageUri?.let { imgUri ->
@@ -114,7 +115,12 @@ object MediaProcessor {
                     }
                 }
 
-                val savedUri = saveBitmapToGallery(context, bitmap, "wm_${System.currentTimeMillis()}.jpg")
+                val savedUri =
+                    MediaStoreSaveHelper.saveJpegBitmap(
+                        context,
+                        bitmap,
+                        "wm_${System.currentTimeMillis()}.jpg",
+                    )
                 bitmap.recycle()
                 savedUri
             } catch (t: Throwable) {
@@ -122,42 +128,6 @@ object MediaProcessor {
                 null
             }
         }
-    }
-
-    private fun saveBitmapToGallery(context: Context, bitmap: Bitmap, filename: String): Uri? {
-        val imageCollection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-        } else {
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        }
-
-        val contentValues = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, filename)
-            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.Images.Media.IS_PENDING, 1)
-            }
-        }
-
-        val imageUri = context.contentResolver.insert(imageCollection, contentValues)
-        imageUri?.let { uri ->
-            var success = false
-            try {
-                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
-                    success = true
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    contentValues.clear()
-                    contentValues.put(MediaStore.Images.Media.IS_PENDING, if (success) 0 else 1)
-                    context.contentResolver.update(uri, contentValues, null, null)
-                }
-            }
-        }
-        return imageUri
     }
 
     suspend fun processVideo(
@@ -173,20 +143,25 @@ object MediaProcessor {
         val editRequestWithOutputPath = withContext(Dispatchers.IO) {
             val overlays = mutableListOf<TextureOverlay>()
             val bitmapsToRecycle = mutableListOf<Bitmap>()
+            var videoWidthPx = 1080
+            try {
+                val retriever = android.media.MediaMetadataRetriever()
+                retriever.setDataSource(context, uri)
+                videoWidthPx =
+                    retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                        ?.toIntOrNull()
+                        ?.takeIf { it > 0 }
+                        ?: 1080
+                retriever.release()
+            } catch (_: Exception) {
+                // keep default reference width
+            }
             configs.forEach { config ->
                 when (config.type) {
                     WatermarkType.TEXT -> {
-                        if (config.text.isNotEmpty()) {
-                            val paint = Paint().apply {
-                                color = Color.WHITE
-                                textSize = 64f
-                                isAntiAlias = true
-                            }
-                            val width = paint.measureText(config.text).toInt() + 20
-                            val height = 80
-                            val textBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                            val canvas = Canvas(textBitmap)
-                            canvas.drawText(config.text, 10f, 60f, paint)
+                        val textBitmap =
+                            TextWatermarkRenderer.renderTextBitmap(context, config, videoWidthPx)
+                                ?: return@forEach
 
                             val xPos = (config.x / 100f) * 2f - 1f
                             val yPos = 1f - (config.y / 100f) * 2f
@@ -194,15 +169,14 @@ object MediaProcessor {
                             val textOverlay = BitmapOverlay.createStaticBitmapOverlay(
                                 textBitmap,
                                 OverlaySettings.Builder()
-                                    .setAlphaScale(config.opacity)
-                                    .setScale(config.scale, config.scale)
+                                    .setAlphaScale(1f)
+                                    .setScale(1f, 1f)
                                     .setOverlayFrameAnchor(0f, 0f)
                                     .setBackgroundFrameAnchor(xPos, yPos)
                                     .build()
                             )
                             overlays.add(textOverlay)
                             bitmapsToRecycle.add(textBitmap)
-                        }
                     }
                     WatermarkType.IMAGE -> {
                         config.imageUri?.let { imgUri ->
@@ -273,20 +247,23 @@ object MediaProcessor {
             Triple(editRequest, tempFile, bitmapsToRecycle)
         }
 
-        val editRequest = editRequestWithOutputPath.first
-        val tempFile = editRequestWithOutputPath.second
-        val bitmapsToRecycle = editRequestWithOutputPath.third
-        val outputPath = tempFile.absolutePath
+    val editRequest = editRequestWithOutputPath.first
+    val tempFile = editRequestWithOutputPath.second
+    val bitmapsToRecycle = editRequestWithOutputPath.third
+    val outputPath = tempFile.absolutePath
 
-        if (isEmulator()) {
-            throw IllegalStateException("Video watermarking is disabled on emulators because virtual environments lack the hardware GPU drivers required by Media3. Please test with images!")
-        }
+    if (isEmulator()) {
+        bitmapsToRecycle.forEach { it.recycle() }
+        throw IllegalStateException("Video watermarking is disabled on emulators because virtual environments lack the hardware GPU drivers required by Media3. Please test with images!")
+    }
 
-        if (!hasH264Encoder()) {
-            throw IllegalStateException("No compatible H.264/AVC hardware video encoder found on this device/emulator. Video processing is disabled.")
-        }
+    if (!hasH264Encoder()) {
+        bitmapsToRecycle.forEach { it.recycle() }
+        throw IllegalStateException("No compatible H.264/AVC hardware video encoder found on this device/emulator. Video processing is disabled.")
+    }
 
-        val deferred = kotlinx.coroutines.CompletableDeferred<Unit>()
+    val deferred = kotlinx.coroutines.CompletableDeferred<Unit>()
+    try {
         withContext(Dispatchers.Main) {
             try {
                 val encoderFactory = DefaultEncoderFactory.Builder(context)
@@ -313,46 +290,24 @@ object MediaProcessor {
             }
         }
         deferred.await()
+    } finally {
         bitmapsToRecycle.forEach { it.recycle() }
+    }
 
-        return withContext(Dispatchers.IO) {
-            try {
-                val videoCollection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                } else {
-                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                }
-
-                val contentValues = ContentValues().apply {
-                    put(MediaStore.Video.Media.DISPLAY_NAME, "wm_${System.currentTimeMillis()}.mp4")
-                    put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        put(MediaStore.Video.Media.IS_PENDING, 1)
-                    }
-                }
-
-                val savedUri = context.contentResolver.insert(videoCollection, contentValues)
-                savedUri?.let { destUri ->
-                    context.contentResolver.openOutputStream(destUri)?.use { outStream ->
-                        tempFile.inputStream().use { inStream ->
-                            inStream.copyTo(outStream)
-                        }
-                    }
-
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        contentValues.clear()
-                        contentValues.put(MediaStore.Video.Media.IS_PENDING, 0)
-                        context.contentResolver.update(destUri, contentValues, null, null)
-                    }
-                    tempFile.delete()
-                    destUri
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                tempFile.delete()
-                null
-            }
+    return withContext(Dispatchers.IO) {
+        try {
+            MediaStoreSaveHelper.saveMp4FromFile(
+                context,
+                tempFile,
+                "wm_${System.currentTimeMillis()}.mp4",
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        } finally {
+            tempFile.delete()
         }
+    }
     }
 
     private fun isEmulator(): Boolean {

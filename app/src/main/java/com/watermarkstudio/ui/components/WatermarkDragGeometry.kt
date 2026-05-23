@@ -8,7 +8,8 @@ import com.watermarkstudio.util.RemovalRegion
 
 /**
  * Maps [WatermarkConfig] x/y (0–100) to overlay top-left in the preview canvas.
- * Aligned with [com.watermarkstudio.util.MediaProcessor] image export semantics.
+ * TEXT layers use top-left semantics (aligned with [com.watermarkstudio.util.TextWatermarkRenderer]).
+ * IMAGE layers use inset range mapping (aligned with [com.watermarkstudio.util.MediaProcessor] image export).
  */
 internal object WatermarkDragGeometry {
 

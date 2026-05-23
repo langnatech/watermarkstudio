@@ -18,6 +18,11 @@ enum class WatermarkType {
     TEXT, IMAGE, REMOVE
 }
 
+/** Maps to Android [android.graphics.Typeface] and Compose [androidx.compose.ui.text.font.FontFamily]. */
+enum class WatermarkFontFamily {
+    SANS, SERIF, MONOSPACE, BOLD,
+}
+
 data class WatermarkConfig(
     val type: WatermarkType,
     val text: String = "",
@@ -27,5 +32,9 @@ data class WatermarkConfig(
     val y: Float = 50f, // Percentage 0-100
     val scale: Float = 1.0f,
     val rotation: Float = 0f,
-    val color: Int = -1 // Color.WHITE in Int
+    /** ARGB; default white. Applied with [opacity] at export/preview time. */
+    val color: Int = 0xFFFFFFFF.toInt(),
+    /** Text watermark font size in sp (independent of [scale], which is for image/remove layers). */
+    val textSizeSp: Float = 24f,
+    val fontFamily: WatermarkFontFamily = WatermarkFontFamily.SANS,
 )

@@ -1,10 +1,7 @@
 package com.watermarkstudio.removal.video
 
-import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
-import android.os.Build
-import android.provider.MediaStore
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.removal.OpenCvBootstrap
 import com.watermarkstudio.removal.RemovalCapability
@@ -226,36 +223,17 @@ object VideoRemovalEngine {
     }
 
     private fun saveVideoToGallery(context: Context, tempFile: File): Uri? {
-        val collection =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-            } else {
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-            }
-        val values =
-            ContentValues().apply {
-                put(MediaStore.Video.Media.DISPLAY_NAME, "wm_remove_${System.currentTimeMillis()}.mp4")
-                put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    put(MediaStore.Video.Media.IS_PENDING, 1)
-                }
-            }
-        val dest = context.contentResolver.insert(collection, values) ?: return null
         return try {
-            context.contentResolver.openOutputStream(dest)?.use { out ->
-                tempFile.inputStream().use { it.copyTo(out) }
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                values.clear()
-                values.put(MediaStore.Video.Media.IS_PENDING, 0)
-                context.contentResolver.update(dest, values, null, null)
-            }
-            tempFile.delete()
-            dest
+            com.watermarkstudio.util.MediaStoreSaveHelper.saveMp4FromFile(
+                context,
+                tempFile,
+                "wm_remove_${System.currentTimeMillis()}.mp4",
+            )
         } catch (e: Exception) {
             e.printStackTrace()
-            tempFile.delete()
             null
+        } finally {
+            tempFile.delete()
         }
     }
 }

@@ -60,6 +60,7 @@
     <string name="export_status_success_desc">已将 %1$d 个文件保存到相册。</string>
     <string name="export_status_partial_title">部分导出成功</string>
     <string name="export_status_partial_desc">已保存 %1$d / %2$d 个文件，部分项目处理失败。</string>
+    <string name="export_warning_remove_layers_ignored">已跳过「去水印」图层（添加水印模式仅叠加文字/图片层）。</string>
     <string name="export_status_failed_title">导出失败</string>
     <string name="export_status_failed_desc">无法处理所选媒体，请检查格式后重试。</string>
     <string name="export_error_no_media">请至少选择一张图片或一个视频。</string>
@@ -81,6 +82,13 @@
     <string name="opacity_pct_format">水印不透明度 (%1$d%%)</string>
     <string name="text_style_lbl">文本图章编辑</string>
     <string name="hint_enter_watermark">请输入需要叠加的文字...</string>
+    <string name="font_family_lbl">字体</string>
+    <string name="font_sans">无衬线</string>
+    <string name="font_serif">衬线</string>
+    <string name="font_mono">等宽</string>
+    <string name="font_bold">粗体</string>
+    <string name="text_color_lbl">文字颜色</string>
+    <string name="text_size_sp_format">字号 (%1$d sp)</string>
     <string name="video_export_duration_lbl">视频导出时长设置</string>
     <string name="video_restricted_duration_desc">普通免费用户单次视频仅支持前 15s。超级专业会员不限时间长度</string>
     <string name="watermark_removed_snack">该水印图层已移除。</string>
