@@ -1,11 +1,7 @@
 package com.watermarkstudio.removal.video
 
 import android.graphics.Bitmap
-import android.graphics.ImageFormat
-import android.graphics.Rect
-import android.graphics.YuvImage
 import android.media.Image
-import java.io.ByteArrayOutputStream
 
 object VideoFrameUtils {
 
@@ -37,12 +33,38 @@ object VideoFrameUtils {
     /** Converts [Image] YUV_420_888 to ARGB bitmap, respecting plane row/pixel stride. */
     fun imageYuv420888ToBitmap(image: Image): Bitmap? {
         val nv21 = yuv420888ToNv21(image) ?: return null
-        val yuv = YuvImage(nv21, ImageFormat.NV21, image.width, image.height, null)
-        val out = ByteArrayOutputStream()
-        yuv.compressToJpeg(Rect(0, 0, image.width, image.height), 92, out)
-        val jpeg = out.toByteArray()
-        return android.graphics.BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
-            ?.copy(Bitmap.Config.ARGB_8888, false)
+        return nv21ToBitmap(nv21, image.width, image.height)
+    }
+
+    /** Direct NV21 → ARGB (avoids lossy JPEG round-trip). */
+    fun nv21ToBitmap(nv21: ByteArray, width: Int, height: Int): Bitmap? {
+        if (width <= 0 || height <= 0) return null
+        val expected = width * height + width * height / 2
+        if (nv21.size < expected) return null
+        val argb = IntArray(width * height)
+        var yp = 0
+        for (j in 0 until height) {
+            var uvp = width * height + (j shr 1) * width
+            var u = 0
+            var v = 0
+            for (i in 0 until width) {
+                val y = nv21[yp].toInt() and 0xFF
+                if ((i and 1) == 0) {
+                    v = (nv21[uvp++].toInt() and 0xFF) - 128
+                    u = (nv21[uvp++].toInt() and 0xFF) - 128
+                }
+                val y1192 = 1192 * (y - 16)
+                var r = (y1192 + 1634 * v) ushr 10
+                var g = (y1192 - 833 * v - 400 * u) ushr 10
+                var b = (y1192 + 2066 * u) ushr 10
+                r = r.coerceIn(0, 255)
+                g = g.coerceIn(0, 255)
+                b = b.coerceIn(0, 255)
+                argb[yp] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+                yp++
+            }
+        }
+        return Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888)
     }
 
     private fun yuv420888ToNv21(image: Image): ByteArray? {

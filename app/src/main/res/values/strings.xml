@@ -131,6 +131,10 @@
     <string name="plan_yearly_tag">Save 60%</string>
     <string name="plan_yearly_desc">Only $4.8/month</string>
     <string name="unit_week">week</string>
+    <string name="plan_price_weekly_fallback">¥6.00 / week</string>
+    <string name="plan_price_monthly_fallback">¥18.00 / month</string>
+    <string name="plan_price_yearly_fallback">¥58.00 / year</string>
+    <string name="plan_most_popular_badge">MOST POPULAR</string>
     <string name="unit_month">month</string>
     <string name="unit_year">year</string>
 

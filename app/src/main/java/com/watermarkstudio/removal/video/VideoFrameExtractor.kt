@@ -34,9 +34,13 @@ object VideoFrameExtractor {
             val fps = targetFps.coerceIn(4, 24)
             val intervalUs = 1_000_000L / fps
             val frames = mutableListOf<Bitmap>()
-            var tUs = 0L
+            var tUs = intervalUs
             while (tUs <= clipMs * 1000L && frames.size < maxFrames) {
-                val frame = retriever.getFrameAtTime(tUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                val frame =
+                    retriever.getFrameAtTime(
+                        tUs,
+                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                    )
                 if (frame != null) {
                     frames.add(VideoFrameUtils.downscaleIfNeeded(frame, maxDimension))
                 }

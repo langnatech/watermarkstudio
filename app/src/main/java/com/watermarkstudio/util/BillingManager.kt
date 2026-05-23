@@ -185,8 +185,8 @@ class BillingManager(
                 }
                 if (!hasActiveSubscription) {
                     Log.d(TAG, "No active subscriptions found.")
-                    onPremiumStatusChanged(false)
                     if (restoreQueryInFlight) {
+                        onPremiumStatusChanged(false)
                         _restorePurchaseResult.value = RestorePurchaseResult.NONE
                         restoreQueryInFlight = false
                     }

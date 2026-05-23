@@ -15,14 +15,14 @@ class MediaCodecVideoFrameSource(
 ) : VideoFrameSource {
 
     private val decoder =
-        MediaCodecStreamDecoder(
+        MediaCodecStreamDecoder.open(
             context,
             uri,
             clipDurationMs,
             maxDimension,
             targetFps,
             maxFrames,
-        )
+        ) ?: throw IllegalStateException("Failed to open MediaCodecStreamDecoder")
 
     override val fps: Float = decoder.fps
     override val width: Int get() = decoder.width

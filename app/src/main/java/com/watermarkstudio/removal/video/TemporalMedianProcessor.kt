@@ -1,12 +1,14 @@
 package com.watermarkstudio.removal.video
 
 import android.graphics.Bitmap
+import android.util.Log
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.removal.mask.MaskGenerator
 import com.watermarkstudio.removal.native.RemovalNative
-import java.nio.ByteBuffer
+import com.watermarkstudio.util.RemovalRegion
 
 object TemporalMedianProcessor {
+    private const val TAG = "TemporalMedianProcessor"
 
     fun apply(frames: List<Bitmap>, config: WatermarkConfig): List<Bitmap> {
         if (frames.isEmpty()) return frames
@@ -15,6 +17,20 @@ object TemporalMedianProcessor {
         val region = MaskGenerator.regionForConfig(w, h, config)
         if (region.width <= 0 || region.height <= 0) return frames
 
+        return if (RemovalNative.ensureLoaded()) {
+            applyNative(frames, w, h, region)
+        } else {
+            Log.w(TAG, "Using Kotlin temporal-median fallback (native library unavailable)")
+            applyKotlinTemporalMedian(frames, region)
+        }
+    }
+
+    private fun applyNative(
+        frames: List<Bitmap>,
+        w: Int,
+        h: Int,
+        region: RemovalRegion,
+    ): List<Bitmap> {
         val n = frames.size
         val stride = w * h * 4
         val buffer = ByteArray(n * stride)
@@ -43,7 +59,67 @@ object TemporalMedianProcessor {
             region.height,
         )
 
-        return frames.mapIndexed { i, original ->
+        return bufferToOutputFrames(frames, buffer, w, h, stride)
+    }
+
+    /**
+     * Per-pixel temporal median inside ROI (same semantics as native path).
+     */
+    private fun applyKotlinTemporalMedian(
+        frames: List<Bitmap>,
+        region: RemovalRegion,
+    ): List<Bitmap> {
+        val n = frames.size
+        val roiPixels = region.width * region.height
+        val stack = Array(n) { IntArray(roiPixels) }
+        for (fi in frames.indices) {
+            var idx = 0
+            for (y in region.top until region.bottom) {
+                for (x in region.left until region.right) {
+                    stack[fi][idx++] = frames[fi].getPixel(x, y)
+                }
+            }
+        }
+
+        val medianArgb = IntArray(roiPixels)
+        val rs = IntArray(n)
+        val gs = IntArray(n)
+        val bs = IntArray(n)
+        for (idx in 0 until roiPixels) {
+            for (fi in 0 until n) {
+                val c = stack[fi][idx]
+                rs[fi] = (c shr 16) and 0xFF
+                gs[fi] = (c shr 8) and 0xFF
+                bs[fi] = c and 0xFF
+            }
+            rs.sort(0, n)
+            gs.sort(0, n)
+            bs.sort(0, n)
+            val mid = n / 2
+            medianArgb[idx] = (0xFF shl 24) or (rs[mid] shl 16) or (gs[mid] shl 8) or bs[mid]
+        }
+
+        return frames.mapIndexed { _, original ->
+            val out = original.copy(Bitmap.Config.ARGB_8888, true)
+            var idx = 0
+            for (y in region.top until region.bottom) {
+                for (x in region.left until region.right) {
+                    out.setPixel(x, y, medianArgb[idx++])
+                }
+            }
+            original.recycle()
+            out
+        }
+    }
+
+    private fun bufferToOutputFrames(
+        frames: List<Bitmap>,
+        buffer: ByteArray,
+        w: Int,
+        h: Int,
+        stride: Int,
+    ): List<Bitmap> =
+        frames.mapIndexed { i, original ->
             val out = original.copy(Bitmap.Config.ARGB_8888, true)
             val pixels = IntArray(w * h)
             val base = i * stride
@@ -58,5 +134,4 @@ object TemporalMedianProcessor {
             original.recycle()
             out
         }
-    }
 }

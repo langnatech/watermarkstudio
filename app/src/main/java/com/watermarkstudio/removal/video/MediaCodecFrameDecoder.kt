@@ -61,14 +61,14 @@ object MediaCodecFrameDecoder {
         maxFrames: Int,
     ): DecodedVideoSequence? {
         return try {
-            MediaCodecStreamDecoder(
+            MediaCodecStreamDecoder.open(
                 context,
                 uri,
                 maxDurationMs,
                 maxDimension,
                 targetFps,
                 maxFrames,
-            ).use { session ->
+            )?.use { session ->
                 val bitmaps = session.decodeAll()
                 if (bitmaps.isEmpty()) return null
                 DecodedVideoSequence(
@@ -78,7 +78,7 @@ object MediaCodecFrameDecoder {
                     height = bitmaps.first().height,
                     clipDurationUs = session.clipDurationUs,
                 )
-            }
+            } ?: return null
         } catch (e: Exception) {
             e.printStackTrace()
             null

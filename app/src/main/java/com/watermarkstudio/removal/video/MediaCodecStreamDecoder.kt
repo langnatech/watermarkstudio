@@ -13,24 +13,122 @@ import android.net.Uri
 /**
  * Incremental MediaCodec decode session shared by [MediaCodecVideoFrameSource] and batch decode.
  */
-internal class MediaCodecStreamDecoder(
-    context: Context,
-    uri: Uri,
+internal class MediaCodecStreamDecoder private constructor(
+    private val extractor: MediaExtractor,
+    private val decoder: MediaCodec,
+    private val imageReader: ImageReader,
     clipDurationMs: Long,
     private val maxDimension: Int,
     targetFps: Int,
-    private val     maxFrames: Int,
+    private val maxFrames: Int,
+    rotation: Int,
+    durationUs: Long,
 ) : AutoCloseable {
 
-    private val extractor = MediaExtractor()
-    private var decoder: MediaCodec? = null
-    private var imageReader: ImageReader? = null
+    companion object {
+        fun open(
+            context: Context,
+            uri: Uri,
+            clipDurationMs: Long,
+            maxDimension: Int,
+            targetFps: Int,
+            maxFrames: Int,
+        ): MediaCodecStreamDecoder? {
+            val extractor = MediaExtractor()
+            try {
+                extractor.setDataSource(context, uri, null)
+                var videoTrack = -1
+                var format: MediaFormat? = null
+                for (i in 0 until extractor.trackCount) {
+                    val f = extractor.getTrackFormat(i)
+                    val mime = f.getString(MediaFormat.KEY_MIME) ?: continue
+                    if (mime.startsWith("video/")) {
+                        videoTrack = i
+                        format = f
+                        break
+                    }
+                }
+                if (videoTrack < 0 || format == null) {
+                    return null
+                }
+                extractor.selectTrack(videoTrack)
+
+                val width = format.getInteger(MediaFormat.KEY_WIDTH)
+                val height = format.getInteger(MediaFormat.KEY_HEIGHT)
+                val rotation =
+                    if (format.containsKey(MediaFormat.KEY_ROTATION)) {
+                        format.getInteger(MediaFormat.KEY_ROTATION)
+                    } else {
+                        0
+                    }
+                val durationUs =
+                    if (format.containsKey(MediaFormat.KEY_DURATION)) {
+                        format.getLong(MediaFormat.KEY_DURATION)
+                    } else {
+                        0L
+                    }
+                val clipDurationUs =
+                    if (clipDurationMs > 0L) {
+                        minOf(durationUs, clipDurationMs * 1000L)
+                    } else {
+                        durationUs
+                    }
+                if (clipDurationUs <= 0L) {
+                    return null
+                }
+
+                val readerWidth = if (rotation == 90 || rotation == 270) height else width
+                val readerHeight = if (rotation == 90 || rotation == 270) width else height
+                val imageReader =
+                    ImageReader.newInstance(readerWidth, readerHeight, ImageFormat.YUV_420_888, 8)
+                val mime =
+                    format.getString(MediaFormat.KEY_MIME) ?: return null
+                val decoder = MediaCodec.createDecoderByType(mime)
+                try {
+                    decoder.configure(format, imageReader.surface, null, 0)
+                    decoder.start()
+                } catch (e: Exception) {
+                    try {
+                        decoder.release()
+                    } catch (_: Exception) {
+                    }
+                    try {
+                        imageReader.close()
+                    } catch (_: Exception) {
+                    }
+                    throw e
+                }
+                return MediaCodecStreamDecoder(
+                    extractor,
+                    decoder,
+                    imageReader,
+                    clipDurationMs,
+                    maxDimension,
+                    targetFps,
+                    maxFrames,
+                    rotation,
+                    durationUs,
+                )
+            } catch (e: Exception) {
+                try {
+                    extractor.release()
+                } catch (_: Exception) {
+                }
+                return null
+            }
+        }
+    }
 
     private val frameIntervalUs = 1_000_000L / targetFps.coerceIn(4, 24)
     private var nextSampleUs = 0L
-    var clipDurationUs: Long = 0L
-        private set
-    private var rotation = 0
+    val clipDurationUs: Long =
+        if (clipDurationMs > 0L) {
+            minOf(durationUs, clipDurationMs * 1000L)
+        } else {
+            durationUs
+        }
+    private val rotation: Int = rotation
+
     private var emitted = 0
 
     private var inputDone = false
@@ -44,63 +142,10 @@ internal class MediaCodecStreamDecoder(
     val width: Int get() = _width
     val height: Int get() = _height
 
-    init {
-        extractor.setDataSource(context, uri, null)
-        var videoTrack = -1
-        var format: MediaFormat? = null
-        for (i in 0 until extractor.trackCount) {
-            val f = extractor.getTrackFormat(i)
-            val mime = f.getString(MediaFormat.KEY_MIME) ?: continue
-            if (mime.startsWith("video/")) {
-                videoTrack = i
-                format = f
-                break
-            }
-        }
-        if (videoTrack < 0 || format == null) {
-            throw IllegalStateException("No video track")
-        }
-        extractor.selectTrack(videoTrack)
-
-        val width = format.getInteger(MediaFormat.KEY_WIDTH)
-        val height = format.getInteger(MediaFormat.KEY_HEIGHT)
-        rotation =
-            if (format.containsKey(MediaFormat.KEY_ROTATION)) {
-                format.getInteger(MediaFormat.KEY_ROTATION)
-            } else {
-                0
-            }
-        val durationUs =
-            if (format.containsKey(MediaFormat.KEY_DURATION)) {
-                format.getLong(MediaFormat.KEY_DURATION)
-            } else {
-                0L
-            }
-        clipDurationUs =
-            if (clipDurationMs > 0L) {
-                minOf(durationUs, clipDurationMs * 1000L)
-            } else {
-                durationUs
-            }
-        if (clipDurationUs <= 0L) {
-            throw IllegalStateException("Invalid clip duration")
-        }
-
-        val readerWidth = if (rotation == 90 || rotation == 270) height else width
-        val readerHeight = if (rotation == 90 || rotation == 270) width else height
-        imageReader = ImageReader.newInstance(readerWidth, readerHeight, ImageFormat.YUV_420_888, 8)
-        val mime = format.getString(MediaFormat.KEY_MIME)
-            ?: throw IllegalStateException("Missing MIME")
-        decoder = MediaCodec.createDecoderByType(mime)
-        decoder!!.configure(format, imageReader!!.surface, null, 0)
-        decoder!!.start()
-    }
-
     /** Advances decode until the next sampled frame is ready, or null at EOF. */
     fun pollNextFrame(): Bitmap? {
         if (outputDone || emitted >= maxFrames) return null
-        val codec = decoder ?: return null
-        val reader = imageReader ?: return null
+        val codec = decoder
 
         decodeLoop@ while (!outputDone) {
             if (!inputDone) {
@@ -141,7 +186,7 @@ internal class MediaCodecStreamDecoder(
                     val eos = bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
                     if (bufferInfo.size > 0 && bufferInfo.presentationTimeUs <= clipDurationUs) {
                         while (nextSampleUs <= bufferInfo.presentationTimeUs) {
-                            val image = reader.acquireLatestImage()
+                            val image = imageReader.acquireLatestImage()
                             if (image != null) {
                                 val bmp = imageToBitmap(image, rotation)
                                 image.close()
@@ -170,7 +215,7 @@ internal class MediaCodecStreamDecoder(
                 }
                 outIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> {
                     if (inputDone) {
-                        val img = reader.acquireLatestImage()
+                        val img = imageReader.acquireLatestImage()
                         if (img == null && emitted > 0) {
                             outputDone = true
                             break@decodeLoop
@@ -195,16 +240,14 @@ internal class MediaCodecStreamDecoder(
     override fun close() {
         outputDone = true
         try {
-            decoder?.stop()
-            decoder?.release()
+            decoder.stop()
+            decoder.release()
         } catch (_: Exception) {
         }
-        decoder = null
         try {
-            imageReader?.close()
+            imageReader.close()
         } catch (_: Exception) {
         }
-        imageReader = null
         try {
             extractor.release()
         } catch (_: Exception) {

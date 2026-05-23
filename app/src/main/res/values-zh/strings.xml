@@ -124,6 +124,10 @@
     <string name="plan_yearly_tag">特省 60%</string>
     <string name="plan_yearly_desc">折合仅 4.8 元/月</string>
     <string name="unit_week">周</string>
+    <string name="plan_price_weekly_fallback">¥6.00 / 周</string>
+    <string name="plan_price_monthly_fallback">¥18.00 / 月</string>
+    <string name="plan_price_yearly_fallback">¥58.00 / 年</string>
+    <string name="plan_most_popular_badge">最受欢迎</string>
     <string name="unit_month">月</string>
     <string name="unit_year">年</string>
 

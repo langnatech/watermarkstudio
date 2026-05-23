@@ -85,13 +85,44 @@ fun SubscriptionScreen(
     }
 
     // Available subscription plans
-    val plans = remember(billingProducts, planWeeklyTitle, planMonthlyTitle, planYearlyTitle) {
-        listOf(
-            SubPlan("weekly", planWeeklyTitle, getProductPrice(BillingProducts.WEEKLY, if (unitWeek == "周") "¥6.00 / 周" else "¥6.00 / week"), planWeeklyTag, planWeeklyDesc),
-            SubPlan("monthly", planMonthlyTitle, getProductPrice(BillingProducts.MONTHLY, if (unitMonth == "月") "¥18.00 / 月" else "¥18.00 / month"), planMonthlyTag, planMonthlyDesc, isPopular = true),
-            SubPlan("yearly", planYearlyTitle, getProductPrice(BillingProducts.YEARLY, if (unitYear == "年") "¥58.00 / 年" else "¥58.00 / year"), planYearlyTag, planYearlyDesc)
-        )
-    }
+    val priceWeeklyFallback = stringResource(R.string.plan_price_weekly_fallback)
+    val priceMonthlyFallback = stringResource(R.string.plan_price_monthly_fallback)
+    val priceYearlyFallback = stringResource(R.string.plan_price_yearly_fallback)
+    val plans =
+        remember(
+            billingProducts,
+            planWeeklyTitle,
+            planMonthlyTitle,
+            planYearlyTitle,
+            priceWeeklyFallback,
+            priceMonthlyFallback,
+            priceYearlyFallback,
+        ) {
+            listOf(
+                SubPlan(
+                    "weekly",
+                    planWeeklyTitle,
+                    getProductPrice(BillingProducts.WEEKLY, priceWeeklyFallback),
+                    planWeeklyTag,
+                    planWeeklyDesc,
+                ),
+                SubPlan(
+                    "monthly",
+                    planMonthlyTitle,
+                    getProductPrice(BillingProducts.MONTHLY, priceMonthlyFallback),
+                    planMonthlyTag,
+                    planMonthlyDesc,
+                    isPopular = true,
+                ),
+                SubPlan(
+                    "yearly",
+                    planYearlyTitle,
+                    getProductPrice(BillingProducts.YEARLY, priceYearlyFallback),
+                    planYearlyTag,
+                    planYearlyDesc,
+                ),
+            )
+        }
     
     var selectedPlanId by remember { mutableStateOf("monthly") }
     var isPurchasing by remember { mutableStateOf(false) }
@@ -665,7 +696,7 @@ fun PlanCard(
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Text(
-                                    "MOST POPULAR",
+                                    stringResource(R.string.plan_most_popular_badge),
                                     fontSize = 8.sp,
                                     fontWeight = FontWeight.Black,
                                     color = Color(0xFF0F172A)

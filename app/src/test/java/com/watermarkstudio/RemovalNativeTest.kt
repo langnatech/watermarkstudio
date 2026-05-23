@@ -8,10 +8,10 @@ class RemovalNativeTest {
 
     @Test
     fun ping_returnsExpectedCode() {
-        try {
-            assertEquals(42, RemovalNative.ping())
-        } catch (e: UnsatisfiedLinkError) {
+        if (!RemovalNative.ensureLoaded()) {
             // JVM unit tests on host may not load Android .so; verified on device builds.
+            return
         }
+        assertEquals(42, RemovalNative.ping())
     }
 }
