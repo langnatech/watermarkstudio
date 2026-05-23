@@ -55,6 +55,7 @@ import com.watermarkstudio.model.MediaItem
 import com.watermarkstudio.removal.preview.RemovalPreviewHelper
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.model.WatermarkType
+import com.watermarkstudio.ui.components.DraggableWatermarkOverlay
 import com.watermarkstudio.ui.components.InteractiveWatermarkPreview
 import com.watermarkstudio.viewmodel.WatermarkViewModel
 import kotlinx.coroutines.delay
@@ -1207,19 +1208,12 @@ fun PreviewContainer(
         }
         if (onActiveConfigUpdate != null && activeConfigIndex in configs.indices) {
             configs.forEachIndexed { index, config ->
-                InteractiveWatermarkPreview(
-                    mediaUri = item.uri,
+                val isActive = index == activeConfigIndex
+                DraggableWatermarkOverlay(
                     config = config,
-                    previewBitmap =
-                        if (index == activeConfigIndex && removeConfig != null && item.type == MediaType.IMAGE) {
-                            previewBitmap
-                        } else {
-                            null
-                        },
-                    showBackground = index == 0,
-                    isActiveLayer = index == activeConfigIndex,
+                    isActiveLayer = isActive,
                     onConfigUpdate = { updated ->
-                        if (index == activeConfigIndex) {
+                        if (isActive) {
                             onActiveConfigUpdate(updated)
                         }
                     },

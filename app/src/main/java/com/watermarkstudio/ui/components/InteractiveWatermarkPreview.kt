@@ -15,7 +15,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -37,7 +41,6 @@ import coil.compose.AsyncImage
 import com.watermarkstudio.R
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.model.WatermarkType
-import com.watermarkstudio.util.RemovalRegion
 import kotlin.math.roundToInt
 
 @Composable
@@ -70,130 +73,164 @@ fun InteractiveWatermarkPreview(
     BoxWithConstraints(modifier = frameModifier) {
         val canvasW = maxWidth
         val canvasH = maxHeight
+        val canvasWidthPx = with(density) { canvasW.roundToPx().toFloat() }
+        val canvasHeightPx = with(density) { canvasH.roundToPx().toFloat() }
 
-        if (showBackground) {
-            if (previewBitmap != null) {
-                Image(
-                    bitmap = previewBitmap.asImageBitmap(),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit,
+        val textSizePx =
+            remember(config.text, config.scale) {
+                val result =
+                    textMeasurer.measure(
+                        text = config.text.ifBlank { " " },
+                        style =
+                            TextStyle(
+                                fontSize = (14f * config.scale).sp,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                        constraints =
+                            Constraints(
+                                maxWidth = with(density) { canvasW.roundToPx() },
+                            ),
+                    )
+                result.size.width to result.size.height
+            }
+
+        val textOverlayW =
+            with(density) {
+                textSizePx.first.toDp().coerceAtLeast(24.dp)
+            }
+        val textOverlayH =
+            with(density) {
+                textSizePx.second.toDp().coerceAtLeast(20.dp)
+            }
+        val (overlayW, overlayH) =
+            remember(config.type, config.scale, canvasW, canvasH, textOverlayW, textOverlayH) {
+                WatermarkDragGeometry.overlaySizeDp(
+                    config,
+                    canvasW,
+                    canvasH,
+                    textOverlayW,
+                    textOverlayH,
                 )
-            } else {
-                AsyncImage(
-                    model = mediaUri,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit,
+            }
+        val overlayWidthPx = with(density) { overlayW.roundToPx().toFloat() }
+        val overlayHeightPx = with(density) { overlayH.roundToPx().toFloat() }
+
+        var isDragging by remember { mutableStateOf(false) }
+        var dragTopLeftPx by remember { mutableStateOf<WatermarkDragGeometry.PxOffset?>(null) }
+
+        val configTopLeft =
+            remember(config.x, config.y, config.type, config.scale, config.text, canvasW, canvasH) {
+                WatermarkDragGeometry.topLeftPx(
+                    config,
+                    canvasWidthPx,
+                    canvasHeightPx,
+                    overlayWidthPx,
+                    overlayHeightPx,
                 )
+            }
+
+        LaunchedEffect(config.x, config.y, config.type, config.scale, config.text) {
+            if (!isDragging) {
+                dragTopLeftPx = null
             }
         }
 
-        val overlaySize =
-            remember(config.type, config.text, config.scale, canvasW, canvasH) {
-                when (config.type) {
-                    WatermarkType.TEXT -> {
-                        val fontSize = (14f * config.scale).sp
-                        val result =
-                            textMeasurer.measure(
-                                text = config.text.ifBlank { " " },
-                                style = TextStyle(fontSize = fontSize, fontWeight = FontWeight.Medium),
-                                constraints =
-                                    Constraints(
-                                        maxWidth =
-                                            with(density) {
-                                                canvasW.roundToPx()
-                                            },
-                                    ),
-                            )
-                        with(density) {
-                            result.size.width.toDp().coerceAtLeast(24.dp) to
-                                result.size.height.toDp().coerceAtLeast(20.dp)
-                        }
-                    }
-                    WatermarkType.IMAGE -> {
-                        val side = (80f * config.scale).dp
-                        side to side
-                    }
-                    WatermarkType.REMOVE -> {
-                        canvasW * RemovalRegion.WIDTH_RATIO * config.scale to
-                            canvasH * RemovalRegion.HEIGHT_RATIO * config.scale
-                    }
+        val displayTopLeft = dragTopLeftPx ?: configTopLeft
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (showBackground) {
+                if (previewBitmap != null) {
+                    Image(
+                        bitmap = previewBitmap.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                } else {
+                    AsyncImage(
+                        model = mediaUri,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
                 }
             }
 
-        val overlayW = overlaySize.first
-        val overlayH = overlaySize.second
-
-        val position =
-            remember(config.x, config.y, config.type, overlayW, overlayH, canvasW, canvasH) {
-                when (config.type) {
-                    WatermarkType.REMOVE -> {
-                        val cx = canvasW * (config.x / 100f)
-                        val cy = canvasH * (config.y / 100f)
-                        (cx - overlayW / 2) to (cy - overlayH / 2)
-                    }
-                    WatermarkType.IMAGE -> {
-                        val rangeX = (canvasW - overlayW).coerceAtLeast(1.dp)
-                        val rangeY = (canvasH - overlayH).coerceAtLeast(1.dp)
-                        rangeX * (config.x / 100f) to rangeY * (config.y / 100f)
-                    }
-                    WatermarkType.TEXT -> {
-                        val cx = canvasW * (config.x / 100f)
-                        val cy = canvasH * (config.y / 100f)
-                        (cx - overlayW / 4) to (cy - overlayH / 2)
-                    }
-                }
-            }
-
-        val clampedOffsetX = position.first.coerceIn(0.dp, (canvasW - overlayW).coerceAtLeast(0.dp))
-        val clampedOffsetY = position.second.coerceIn(0.dp, (canvasH - overlayH).coerceAtLeast(0.dp))
-
-        val dragModifier =
-            if (isActiveLayer) {
-                Modifier.pointerInput(config.type, canvasW, canvasH, overlayW, overlayH) {
-                    detectDragGestures { change, dragAmount ->
-                        change.consume()
-                        val dxPx = dragAmount.x
-                        val dyPx = dragAmount.y
-                        val newConfig =
-                            when (config.type) {
-                                WatermarkType.REMOVE -> {
-                                    val centerX = size.width * (config.x / 100f) + dxPx
-                                    val centerY = size.height * (config.y / 100f) + dyPx
-                                    config.copy(
-                                        x = (centerX / size.width.toFloat() * 100f).coerceIn(0f, 100f),
-                                        y = (centerY / size.height.toFloat() * 100f).coerceIn(0f, 100f),
-                                    )
-                                }
-                                WatermarkType.IMAGE -> {
-                                    val rangeX = (size.width - overlayW.toPx()).coerceAtLeast(1f)
-                                    val rangeY = (size.height - overlayH.toPx()).coerceAtLeast(1f)
-                                    config.copy(
-                                        x = (config.x + dxPx / rangeX * 100f).coerceIn(0f, 100f),
-                                        y = (config.y + dyPx / rangeY * 100f).coerceIn(0f, 100f),
-                                    )
-                                }
-                                WatermarkType.TEXT -> {
-                                    config.copy(
-                                        x = (config.x + dxPx / size.width.toFloat() * 100f).coerceIn(0f, 100f),
-                                        y = (config.y + dyPx / size.height.toFloat() * 100f).coerceIn(0f, 100f),
-                                    )
-                                }
-                            }
-                        onConfigUpdate(newConfig)
-                    }
-                }
-            } else {
+            val overlayModifier =
                 Modifier
-            }
+                    .offset {
+                        IntOffset(displayTopLeft.x.roundToInt(), displayTopLeft.y.roundToInt())
+                    }
+                    .size(overlayW, overlayH)
+                    .alpha(if (isActiveLayer) 1f else 0.45f)
 
-        Box(
-            modifier = Modifier
-                .offset { IntOffset(clampedOffsetX.roundToPx(), clampedOffsetY.roundToPx()) }
-                .size(overlayW, overlayH)
-                .alpha(if (isActiveLayer) 1f else 0.45f)
-                .then(dragModifier)
+            val gestureModifier =
+                if (isActiveLayer) {
+                    Modifier.pointerInput(canvasWidthPx, canvasHeightPx, overlayWidthPx, overlayHeightPx) {
+                        detectDragGestures(
+                            onDragStart = {
+                                isDragging = true
+                                dragTopLeftPx = configTopLeft
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                val base = dragTopLeftPx ?: configTopLeft
+                                dragTopLeftPx =
+                                    WatermarkDragGeometry.PxOffset(
+                                        x = (base.x + dragAmount.x).coerceIn(
+                                            0f,
+                                            (canvasWidthPx - overlayWidthPx).coerceAtLeast(0f),
+                                        ),
+                                        y = (base.y + dragAmount.y).coerceIn(
+                                            0f,
+                                            (canvasHeightPx - overlayHeightPx).coerceAtLeast(0f),
+                                        ),
+                                    )
+                            },
+                            onDragEnd = {
+                                isDragging = false
+                                dragTopLeftPx?.let { topLeft ->
+                                    onConfigUpdate(
+                                        WatermarkDragGeometry.configFromTopLeftPx(
+                                            config,
+                                            topLeft,
+                                            canvasWidthPx,
+                                            canvasHeightPx,
+                                            overlayWidthPx,
+                                            overlayHeightPx,
+                                        ),
+                                    )
+                                }
+                                dragTopLeftPx = null
+                            },
+                            onDragCancel = {
+                                isDragging = false
+                                dragTopLeftPx = null
+                            },
+                        )
+                    }
+                } else {
+                    Modifier
+                }
+
+            WatermarkOverlayChip(
+                config = config,
+                modifier = overlayModifier.then(gestureModifier),
+                isActiveLayer = isActiveLayer,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WatermarkOverlayChip(
+    config: WatermarkConfig,
+    modifier: Modifier,
+    isActiveLayer: Boolean,
+) {
+    Box(
+        modifier =
+            modifier
                 .border(
                     width = if (isActiveLayer) 2.dp else 1.dp,
                     color =
@@ -211,32 +248,49 @@ fun InteractiveWatermarkPreview(
                     RoundedCornerShape(8.dp),
                 )
                 .padding(horizontal = 8.dp, vertical = 4.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            when (config.type) {
-                WatermarkType.TEXT ->
-                    Text(
-                        text = config.text.ifBlank { stringResource(R.string.hint_enter_watermark) },
-                        color = Color.White.copy(alpha = config.opacity),
-                        fontSize = (14 * config.scale).sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 2,
-                    )
-                WatermarkType.IMAGE ->
-                    AsyncImage(
-                        model = config.imageUri,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                    )
-                WatermarkType.REMOVE ->
-                    Text(
-                        text = stringResource(R.string.layer_type_remove),
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-            }
+        contentAlignment = Alignment.Center,
+    ) {
+        when (config.type) {
+            WatermarkType.TEXT ->
+                Text(
+                    text = config.text.ifBlank { stringResource(R.string.hint_enter_watermark) },
+                    color = Color.White.copy(alpha = config.opacity),
+                    fontSize = (14 * config.scale).sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2,
+                )
+            WatermarkType.IMAGE ->
+                AsyncImage(
+                    model = config.imageUri,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                )
+            WatermarkType.REMOVE ->
+                Text(
+                    text = stringResource(R.string.layer_type_remove),
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                )
         }
     }
+}
+
+/** Overlay only (no background); use inside [PreviewContainer] with a shared image layer. */
+@Composable
+fun DraggableWatermarkOverlay(
+    config: WatermarkConfig,
+    isActiveLayer: Boolean,
+    onConfigUpdate: (WatermarkConfig) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    InteractiveWatermarkPreview(
+        mediaUri = Uri.EMPTY,
+        config = config,
+        showBackground = false,
+        isActiveLayer = isActiveLayer,
+        onConfigUpdate = onConfigUpdate,
+        modifier = modifier,
+    )
 }
