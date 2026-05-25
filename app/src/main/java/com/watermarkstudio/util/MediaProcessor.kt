@@ -163,16 +163,17 @@ object MediaProcessor {
                             TextWatermarkRenderer.renderTextBitmap(context, config, videoWidthPx)
                                 ?: return@forEach
 
-                            val xPos = (config.x / 100f) * 2f - 1f
-                            val yPos = 1f - (config.y / 100f) * 2f
+                            // Top-left anchor: same semantics as [TextWatermarkRenderer.drawOnCanvas] (x/y % of frame).
+                            val bgX = (config.x / 100f) * 2f - 1f
+                            val bgY = 1f - (config.y / 100f) * 2f
 
                             val textOverlay = BitmapOverlay.createStaticBitmapOverlay(
                                 textBitmap,
                                 OverlaySettings.Builder()
                                     .setAlphaScale(1f)
                                     .setScale(1f, 1f)
-                                    .setOverlayFrameAnchor(0f, 0f)
-                                    .setBackgroundFrameAnchor(xPos, yPos)
+                                    .setOverlayFrameAnchor(-1f, 1f)
+                                    .setBackgroundFrameAnchor(bgX, bgY)
                                     .build()
                             )
                             overlays.add(textOverlay)

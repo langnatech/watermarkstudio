@@ -7,13 +7,15 @@ import com.watermarkstudio.model.WatermarkType
 import com.watermarkstudio.util.RemovalRegion
 
 /**
- * Maps [WatermarkConfig] x/y (0–100) to overlay top-left in the preview canvas.
- * TEXT layers use top-left semantics (aligned with [com.watermarkstudio.util.TextWatermarkRenderer]).
- * IMAGE layers use inset range mapping (aligned with [com.watermarkstudio.util.MediaProcessor] image export).
+ * Maps [WatermarkConfig] x/y (0–100 of **media content**) to overlay top-left on the preview canvas.
+ * When [contentRect] is set (Fit letterboxing), coordinates align with export on full-resolution media.
  */
 internal object WatermarkDragGeometry {
 
     data class PxOffset(val x: Float, val y: Float)
+
+    private fun area(content: WatermarkContentGeometry.ContentRect?, canvasW: Float, canvasH: Float) =
+        content ?: WatermarkContentGeometry.ContentRect(0f, 0f, canvasW, canvasH)
 
     fun topLeftPx(
         config: WatermarkConfig,
@@ -21,22 +23,24 @@ internal object WatermarkDragGeometry {
         canvasHeightPx: Float,
         overlayWidthPx: Float,
         overlayHeightPx: Float,
+        contentRect: WatermarkContentGeometry.ContentRect? = null,
     ): PxOffset {
         if (canvasWidthPx <= 0f || canvasHeightPx <= 0f) {
             return PxOffset(0f, 0f)
         }
+        val area = area(contentRect, canvasWidthPx, canvasHeightPx)
         return when (config.type) {
             WatermarkType.IMAGE -> {
-                val rangeX = (canvasWidthPx - overlayWidthPx).coerceAtLeast(1f)
-                val rangeY = (canvasHeightPx - overlayHeightPx).coerceAtLeast(1f)
+                val rangeX = (area.width - overlayWidthPx).coerceAtLeast(1f)
+                val rangeY = (area.height - overlayHeightPx).coerceAtLeast(1f)
                 PxOffset(
-                    x = rangeX * (config.x / 100f),
-                    y = rangeY * (config.y / 100f),
+                    x = area.left + rangeX * (config.x / 100f),
+                    y = area.top + rangeY * (config.y / 100f),
                 )
             }
             WatermarkType.REMOVE -> {
-                val cx = canvasWidthPx * (config.x / 100f)
-                val cy = canvasHeightPx * (config.y / 100f)
+                val cx = area.left + area.width * (config.x / 100f)
+                val cy = area.top + area.height * (config.y / 100f)
                 PxOffset(
                     x = cx - overlayWidthPx / 2f,
                     y = cy - overlayHeightPx / 2f,
@@ -44,8 +48,8 @@ internal object WatermarkDragGeometry {
             }
             WatermarkType.TEXT -> {
                 PxOffset(
-                    x = canvasWidthPx * (config.x / 100f),
-                    y = canvasHeightPx * (config.y / 100f),
+                    x = area.left + area.width * (config.x / 100f),
+                    y = area.top + area.height * (config.y / 100f),
                 )
             }
         }
@@ -58,32 +62,36 @@ internal object WatermarkDragGeometry {
         canvasHeightPx: Float,
         overlayWidthPx: Float,
         overlayHeightPx: Float,
+        contentRect: WatermarkContentGeometry.ContentRect? = null,
     ): WatermarkConfig {
-        val maxX = (canvasWidthPx - overlayWidthPx).coerceAtLeast(0f)
-        val maxY = (canvasHeightPx - overlayHeightPx).coerceAtLeast(0f)
-        val xPx = topLeft.x.coerceIn(0f, maxX)
-        val yPx = topLeft.y.coerceIn(0f, maxY)
+        val area = area(contentRect, canvasWidthPx, canvasHeightPx)
+        val minX = area.left
+        val minY = area.top
+        val maxX = (area.right - overlayWidthPx).coerceAtLeast(minX)
+        val maxY = (area.bottom - overlayHeightPx).coerceAtLeast(minY)
+        val xPx = topLeft.x.coerceIn(minX, maxX)
+        val yPx = topLeft.y.coerceIn(minY, maxY)
         return when (config.type) {
             WatermarkType.IMAGE -> {
-                val rangeX = (canvasWidthPx - overlayWidthPx).coerceAtLeast(1f)
-                val rangeY = (canvasHeightPx - overlayHeightPx).coerceAtLeast(1f)
+                val rangeX = (area.width - overlayWidthPx).coerceAtLeast(1f)
+                val rangeY = (area.height - overlayHeightPx).coerceAtLeast(1f)
                 config.copy(
-                    x = (xPx / rangeX * 100f).coerceIn(0f, 100f),
-                    y = (yPx / rangeY * 100f).coerceIn(0f, 100f),
+                    x = ((xPx - area.left) / rangeX * 100f).coerceIn(0f, 100f),
+                    y = ((yPx - area.top) / rangeY * 100f).coerceIn(0f, 100f),
                 )
             }
             WatermarkType.REMOVE -> {
                 val cx = xPx + overlayWidthPx / 2f
                 val cy = yPx + overlayHeightPx / 2f
                 config.copy(
-                    x = (cx / canvasWidthPx * 100f).coerceIn(0f, 100f),
-                    y = (cy / canvasHeightPx * 100f).coerceIn(0f, 100f),
+                    x = ((cx - area.left) / area.width * 100f).coerceIn(0f, 100f),
+                    y = ((cy - area.top) / area.height * 100f).coerceIn(0f, 100f),
                 )
             }
             WatermarkType.TEXT -> {
                 config.copy(
-                    x = (xPx / canvasWidthPx * 100f).coerceIn(0f, 100f),
-                    y = (yPx / canvasHeightPx * 100f).coerceIn(0f, 100f),
+                    x = ((xPx - area.left) / area.width * 100f).coerceIn(0f, 100f),
+                    y = ((yPx - area.top) / area.height * 100f).coerceIn(0f, 100f),
                 )
             }
         }
@@ -95,6 +103,8 @@ internal object WatermarkDragGeometry {
         canvasH: Dp,
         textOverlayW: Dp,
         textOverlayH: Dp,
+        contentWidthDp: Dp? = null,
+        contentHeightDp: Dp? = null,
     ): Pair<Dp, Dp> =
         when (config.type) {
             WatermarkType.TEXT -> textOverlayW to textOverlayH
@@ -103,8 +113,10 @@ internal object WatermarkDragGeometry {
                 side to side
             }
             WatermarkType.REMOVE -> {
-                canvasW * RemovalRegion.WIDTH_RATIO * config.scale to
-                    canvasH * RemovalRegion.HEIGHT_RATIO * config.scale
+                val w = contentWidthDp ?: canvasW
+                val h = contentHeightDp ?: canvasH
+                w * RemovalRegion.WIDTH_RATIO * config.scale to
+                    h * RemovalRegion.HEIGHT_RATIO * config.scale
             }
         }
 }

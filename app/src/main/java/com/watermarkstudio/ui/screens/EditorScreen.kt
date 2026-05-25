@@ -57,8 +57,9 @@ import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.model.WatermarkFontFamily
 import com.watermarkstudio.model.WatermarkType
 import com.watermarkstudio.ui.components.watermarkDisplayText
-import com.watermarkstudio.ui.components.watermarkTextStyle
+import com.watermarkstudio.ui.components.WatermarkOutlinedText
 import com.watermarkstudio.ui.components.DraggableWatermarkOverlay
+import com.watermarkstudio.ui.components.previewFontSizeSp
 import com.watermarkstudio.ui.components.InteractiveWatermarkPreview
 import com.watermarkstudio.viewmodel.WatermarkViewModel
 import kotlinx.coroutines.delay
@@ -1218,6 +1219,7 @@ fun PreviewContainer(
             configs.forEachIndexed { index, config ->
                 val isActive = index == activeConfigIndex
                 DraggableWatermarkOverlay(
+                    mediaUri = item.uri,
                     config = config,
                     isActiveLayer = isActive,
                     onConfigUpdate = { updated ->
@@ -1253,14 +1255,17 @@ fun WatermarkOverlay(config: WatermarkConfig) {
                 .align(androidx.compose.ui.BiasAlignment(horizontalBias, verticalBias))
                 .alpha(config.opacity)
                 .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
-                .background(Color.Black.copy(alpha = 0.4f))
-                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .background(
+                    if (config.type == WatermarkType.TEXT) Color.Transparent else Color.Black.copy(alpha = 0.35f),
+                )
+                .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
             when (config.type) {
                 WatermarkType.TEXT -> {
-                    Text(
+                    WatermarkOutlinedText(
                         text = config.watermarkDisplayText(stringResource(R.string.hint_enter_watermark)),
-                        style = config.watermarkTextStyle(),
+                        config = config,
+                        fontSize = config.previewFontSizeSp(1080f),
                     )
                 }
                 WatermarkType.IMAGE -> {

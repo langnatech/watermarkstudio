@@ -27,7 +27,7 @@ data class WatermarkConfig(
     val type: WatermarkType,
     val text: String = "",
     val imageUri: Uri? = null,
-    val opacity: Float = 0.5f,
+    val opacity: Float = 0.88f,
     val x: Float = 50f, // Percentage 0-100
     val y: Float = 50f, // Percentage 0-100
     val scale: Float = 1.0f,

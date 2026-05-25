@@ -1,7 +1,9 @@
 package com.watermarkstudio.ui.components
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,7 +32,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
@@ -38,6 +39,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.watermarkstudio.R
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.model.WatermarkType
@@ -53,8 +56,49 @@ fun InteractiveWatermarkPreview(
     onConfigUpdate: (WatermarkConfig) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
+
+    var mediaWidthPx by remember(mediaUri, previewBitmap) {
+        mutableStateOf(previewBitmap?.width?.toFloat())
+    }
+    var mediaHeightPx by remember(mediaUri, previewBitmap) {
+        mutableStateOf(previewBitmap?.height?.toFloat())
+    }
+
+    LaunchedEffect(mediaUri, previewBitmap) {
+        if (previewBitmap != null) {
+            mediaWidthPx = previewBitmap.width.toFloat()
+            mediaHeightPx = previewBitmap.height.toFloat()
+            return@LaunchedEffect
+        }
+        if (mediaUri == Uri.EMPTY) {
+            mediaWidthPx = null
+            mediaHeightPx = null
+            return@LaunchedEffect
+        }
+        val size =
+            withContext(Dispatchers.IO) {
+                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                try {
+                    context.contentResolver.openInputStream(mediaUri)?.use {
+                        BitmapFactory.decodeStream(it, null, opts)
+                    }
+                    if (opts.outWidth > 0 && opts.outHeight > 0) {
+                        opts.outWidth.toFloat() to opts.outHeight.toFloat()
+                    } else {
+                        null
+                    }
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        if (size != null) {
+            mediaWidthPx = size.first
+            mediaHeightPx = size.second
+        }
+    }
 
     val frameModifier =
         if (showBackground) {
@@ -76,16 +120,29 @@ fun InteractiveWatermarkPreview(
         val canvasWidthPx = with(density) { canvasW.roundToPx().toFloat() }
         val canvasHeightPx = with(density) { canvasH.roundToPx().toFloat() }
 
+        val contentRect =
+            remember(canvasWidthPx, canvasHeightPx, mediaWidthPx, mediaHeightPx) {
+                val cw = mediaWidthPx ?: canvasWidthPx
+                val ch = mediaHeightPx ?: canvasHeightPx
+                WatermarkContentGeometry.fittedContentRect(canvasWidthPx, canvasHeightPx, cw, ch)
+            }
+        val contentWidthDp = with(density) { contentRect.width.toDp() }
+        val contentHeightDp = with(density) { contentRect.height.toDp() }
+
         val hint = stringResource(R.string.hint_enter_watermark)
+        val previewFontSize = config.previewFontSizeSp(contentRect.width)
         val textSizePx =
-            remember(config.text, config.textSizeSp, config.fontFamily, config.color, config.opacity) {
+            remember(config.text, previewFontSize, config.fontFamily, config.color, config.opacity) {
                 val result =
                     textMeasurer.measure(
                         text = config.watermarkDisplayText(hint),
-                        style = config.watermarkTextStyle(),
+                        style =
+                            androidx.compose.ui.text.TextStyle(
+                                fontSize = previewFontSize,
+                            ),
                         constraints =
                             Constraints(
-                                maxWidth = with(density) { canvasW.roundToPx() },
+                                maxWidth = contentRect.width.roundToInt().coerceAtLeast(1),
                             ),
                     )
                 result.size.width to result.size.height
@@ -100,29 +157,37 @@ fun InteractiveWatermarkPreview(
                 textSizePx.second.toDp().coerceAtLeast(20.dp)
             }
         val (overlayW, overlayH) =
-            remember(config.type, config.scale, canvasW, canvasH, textOverlayW, textOverlayH) {
+            remember(config.type, config.scale, canvasW, canvasH, textOverlayW, textOverlayH, contentWidthDp, contentHeightDp) {
                 WatermarkDragGeometry.overlaySizeDp(
                     config,
                     canvasW,
                     canvasH,
                     textOverlayW,
                     textOverlayH,
+                    contentWidthDp,
+                    contentHeightDp,
                 )
             }
         val overlayWidthPx = with(density) { overlayW.roundToPx().toFloat() }
         val overlayHeightPx = with(density) { overlayH.roundToPx().toFloat() }
 
+        val dragMinX = contentRect.left
+        val dragMinY = contentRect.top
+        val dragMaxX = (contentRect.right - overlayWidthPx).coerceAtLeast(dragMinX)
+        val dragMaxY = (contentRect.bottom - overlayHeightPx).coerceAtLeast(dragMinY)
+
         var isDragging by remember { mutableStateOf(false) }
         var dragTopLeftPx by remember { mutableStateOf<WatermarkDragGeometry.PxOffset?>(null) }
 
         val configTopLeft =
-            remember(config.x, config.y, config.type, config.scale, config.text, canvasW, canvasH) {
+            remember(config.x, config.y, config.type, config.scale, config.text, contentRect) {
                 WatermarkDragGeometry.topLeftPx(
                     config,
                     canvasWidthPx,
                     canvasHeightPx,
                     overlayWidthPx,
                     overlayHeightPx,
+                    contentRect,
                 )
             }
 
@@ -163,7 +228,7 @@ fun InteractiveWatermarkPreview(
 
             val gestureModifier =
                 if (isActiveLayer) {
-                    Modifier.pointerInput(canvasWidthPx, canvasHeightPx, overlayWidthPx, overlayHeightPx) {
+                    Modifier.pointerInput(contentRect, overlayWidthPx, overlayHeightPx) {
                         detectDragGestures(
                             onDragStart = {
                                 isDragging = true
@@ -174,14 +239,8 @@ fun InteractiveWatermarkPreview(
                                 val base = dragTopLeftPx ?: configTopLeft
                                 dragTopLeftPx =
                                     WatermarkDragGeometry.PxOffset(
-                                        x = (base.x + dragAmount.x).coerceIn(
-                                            0f,
-                                            (canvasWidthPx - overlayWidthPx).coerceAtLeast(0f),
-                                        ),
-                                        y = (base.y + dragAmount.y).coerceIn(
-                                            0f,
-                                            (canvasHeightPx - overlayHeightPx).coerceAtLeast(0f),
-                                        ),
+                                        x = (base.x + dragAmount.x).coerceIn(dragMinX, dragMaxX),
+                                        y = (base.y + dragAmount.y).coerceIn(dragMinY, dragMaxY),
                                     )
                             },
                             onDragEnd = {
@@ -195,6 +254,7 @@ fun InteractiveWatermarkPreview(
                                             canvasHeightPx,
                                             overlayWidthPx,
                                             overlayHeightPx,
+                                            contentRect,
                                         ),
                                     )
                                 }
@@ -212,6 +272,7 @@ fun InteractiveWatermarkPreview(
 
             WatermarkOverlayChip(
                 config = config,
+                previewFontSize = previewFontSize,
                 modifier = overlayModifier.then(gestureModifier),
                 isActiveLayer = isActiveLayer,
             )
@@ -222,9 +283,16 @@ fun InteractiveWatermarkPreview(
 @Composable
 private fun WatermarkOverlayChip(
     config: WatermarkConfig,
+    previewFontSize: androidx.compose.ui.unit.TextUnit,
     modifier: Modifier,
     isActiveLayer: Boolean,
 ) {
+    val chipBackground =
+        when (config.type) {
+            WatermarkType.REMOVE -> Color(0xFF10B981).copy(alpha = 0.25f)
+            WatermarkType.TEXT -> Color.Transparent
+            else -> Color.Black.copy(alpha = 0.2f)
+        }
     Box(
         modifier =
             modifier
@@ -237,22 +305,16 @@ private fun WatermarkOverlayChip(
                         },
                     shape = RoundedCornerShape(8.dp),
                 )
-                .background(
-                    when (config.type) {
-                        WatermarkType.REMOVE -> Color(0xFF10B981).copy(alpha = 0.25f)
-                        else -> Color.Black.copy(alpha = 0.35f)
-                    },
-                    RoundedCornerShape(8.dp),
-                )
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .background(chipBackground, RoundedCornerShape(8.dp))
+                .padding(horizontal = 4.dp, vertical = 2.dp),
         contentAlignment = Alignment.Center,
     ) {
         when (config.type) {
             WatermarkType.TEXT ->
-                Text(
+                WatermarkOutlinedText(
                     text = config.watermarkDisplayText(stringResource(R.string.hint_enter_watermark)),
-                    style = config.watermarkTextStyle(),
-                    maxLines = 3,
+                    config = config,
+                    fontSize = previewFontSize,
                 )
             WatermarkType.IMAGE ->
                 AsyncImage(
@@ -275,13 +337,14 @@ private fun WatermarkOverlayChip(
 /** Overlay only (no background); use inside [PreviewContainer] with a shared image layer. */
 @Composable
 fun DraggableWatermarkOverlay(
+    mediaUri: Uri,
     config: WatermarkConfig,
     isActiveLayer: Boolean,
     onConfigUpdate: (WatermarkConfig) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     InteractiveWatermarkPreview(
-        mediaUri = Uri.EMPTY,
+        mediaUri = mediaUri,
         config = config,
         showBackground = false,
         isActiveLayer = isActiveLayer,
