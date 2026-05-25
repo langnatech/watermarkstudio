@@ -18,9 +18,25 @@ class VideoRemovalLimitsTest {
     }
 
     @Test
-    fun resolveSampling_reducesFpsWhenTooManyFrames() {
-        val plan = VideoRemovalLimits.resolveSampling(15, 300_000L)
-        assertTrue(plan.maxFrames <= VideoRemovalLimits.MAX_FRAME_COUNT)
-        assertTrue(plan.targetFps <= 15)
+    fun resolveSamplingPro_keeps60FpsForLongClip() {
+        val plan = VideoRemovalLimits.resolveSamplingPro(60, 300_000L, 60f)
+        assertEquals(60, plan.targetFps)
+        assertEquals(18_000, plan.maxFrames)
+    }
+
+    @Test
+    fun resolveSamplingFree_keeps60FpsForFull15s() {
+        val plan = VideoRemovalLimits.resolveSamplingFree(60, 15_000L, 60f)
+        assertEquals(60, plan.targetFps)
+        assertEquals(900, plan.maxFrames)
+        assertEquals(15_000L, plan.clipDurationMs)
+    }
+
+    @Test
+    fun resolveSamplingFree_clipsDurationTo15s() {
+        val plan = VideoRemovalLimits.resolveSamplingFree(60, 60_000L, 60f)
+        assertEquals(15_000L, plan.clipDurationMs)
+        assertEquals(60, plan.targetFps)
+        assertEquals(900, plan.maxFrames)
     }
 }

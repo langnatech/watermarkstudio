@@ -32,8 +32,7 @@ object VideoRemovalEngine {
             } else {
                 VideoRemovalLimits.PRO_MAX_DURATION_MS
             }
-        val baseFps = if (isPremium) 15 else if (quality == RemovalQuality.ADVANCED) 12 else 10
-        val sampling = VideoRemovalLimits.resolveSampling(baseFps, clipMs)
+        val sampling = VideoRemovalLimits.resolveSampling(context, uri, clipMs, isPremium)
 
         fun report(stageStart: Float, stageEnd: Float, fraction: Float) {
             progress?.report(stageStart + (stageEnd - stageStart) * fraction.coerceIn(0f, 1f))
@@ -69,29 +68,14 @@ object VideoRemovalEngine {
         }
 
         val tempFile = File(context.cacheDir, "remove_${System.currentTimeMillis()}.mp4")
-        val videoDurationUs =
-            VideoRemovalLimits.videoDurationUs(streamResult.frameCount, streamResult.fps)
         var exported =
-            when (quality) {
-                RemovalQuality.ADVANCED ->
-                    exportAdvancedWithAudio(
-                        context,
-                        uri,
-                        streamResult,
-                        videoDurationUs,
-                        sampling.clipDurationMs,
-                        tempFile,
-                    )
-                RemovalQuality.STANDARD -> {
-                    try {
-                        streamResult.silentFile.copyTo(tempFile, overwrite = true)
-                        true
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        false
-                    }
-                }
-            }
+            exportWithSourceAudio(
+                context,
+                uri,
+                streamResult.silentFile,
+                sampling.clipDurationMs,
+                tempFile,
+            )
         if (!exported) {
             silentFile.delete()
             tempFile.delete()
@@ -102,18 +86,17 @@ object VideoRemovalEngine {
         saveVideoToGallery(context, tempFile)
     }
 
-    private suspend fun exportAdvancedWithAudio(
+    private suspend fun exportWithSourceAudio(
         context: Context,
         sourceUri: Uri,
-        streamResult: StreamingVideoRemovalEngine.StreamingResult,
-        @Suppress("UNUSED_PARAMETER") videoDurationUs: Long,
+        silentVideoFile: File,
         clipDurationMs: Long,
         outputFile: File,
     ): Boolean {
         if (
             RemovalAudioExporter.muxWithSourceAudio(
                 context,
-                streamResult.silentFile,
+                silentVideoFile,
                 sourceUri,
                 outputFile,
                 clipDurationMs,
@@ -121,7 +104,7 @@ object VideoRemovalEngine {
         ) {
             return true
         }
-        return RemovalAudioExporter.copySilentVideo(streamResult.silentFile, outputFile)
+        return RemovalAudioExporter.copySilentVideo(silentVideoFile, outputFile)
     }
 
     /** Fallback batch path when streaming decode fails. */
@@ -139,16 +122,14 @@ object VideoRemovalEngine {
             progress?.report(stageStart + (stageEnd - stageStart) * fraction.coerceIn(0f, 1f))
         }
         val decoded =
-            if (quality == RemovalQuality.ADVANCED) {
-                MediaCodecFrameDecoder.decode(
-                    context,
-                    uri,
-                    sampling.clipDurationMs,
-                    maxDimension,
-                    targetFps = sampling.targetFps,
-                )
-            } else {
-                VideoFrameExtractor.extract(
+            MediaCodecFrameDecoder.decode(
+                context,
+                uri,
+                sampling.clipDurationMs,
+                maxDimension,
+                targetFps = sampling.targetFps,
+            )
+                ?: VideoFrameExtractor.extract(
                     context,
                     uri,
                     sampling.clipDurationMs,
@@ -165,54 +146,28 @@ object VideoRemovalEngine {
                             clipDurationUs = sampling.clipDurationMs * 1000L,
                         )
                     }
-            } ?: return null
+                ?: return null
 
         val recovered =
-            when (quality) {
-                RemovalQuality.ADVANCED ->
-                    OpticalFlowRecoveryProcessor.recover(decoded.bitmaps, config, useOpticalFlow = true)
-                RemovalQuality.STANDARD ->
-                    TemporalMedianProcessor.apply(decoded.bitmaps, config)
-            }
-        val blended =
-            if (quality == RemovalQuality.ADVANCED) {
-                recovered.map { FrameInpaintBlender.blendFrame(it, config, quality) }
-            } else {
-                recovered
-            }
+            OpticalFlowRecoveryProcessor.recover(decoded.bitmaps, config, useOpticalFlow = true)
+        val blended = recovered.map { FrameInpaintBlender.blendFrame(it, config, quality) }
         val videoDurationUs = VideoRemovalLimits.videoDurationUs(blended.size, decoded.fps)
         val tempFile = File(context.cacheDir, "remove_${System.currentTimeMillis()}.mp4")
-        var exported =
-            when (quality) {
-                RemovalQuality.ADVANCED ->
-                    VideoExportMuxer.export(
-                        context,
-                        uri,
-                        blended,
-                        decoded.fps,
-                        videoDurationUs,
-                        tempFile,
-                        includeAudio = true,
-                    )
-                RemovalQuality.STANDARD ->
-                    SlideshowVideoEncoder.encode(blended, decoded.fps, tempFile)
-            }
-        if (!exported && quality == RemovalQuality.ADVANCED) {
-            val silentFile = File(context.cacheDir, "remove_silent_${System.currentTimeMillis()}.mp4")
-            if (SlideshowVideoEncoder.encode(blended, decoded.fps, silentFile)) {
-                exported =
-                    RemovalAudioExporter.muxWithSourceAudio(
-                        context,
-                        silentFile,
-                        uri,
-                        tempFile,
-                        sampling.clipDurationMs,
-                    )
-            }
-            silentFile.delete()
-            if (!exported) {
-                exported = SlideshowVideoEncoder.encode(blended, decoded.fps, tempFile)
-            }
+        val silentFile = File(context.cacheDir, "remove_silent_${System.currentTimeMillis()}.mp4")
+        var exported = SlideshowVideoEncoder.encode(blended, decoded.fps, silentFile)
+        if (exported) {
+            exported =
+                exportWithSourceAudio(
+                    context,
+                    uri,
+                    silentFile,
+                    sampling.clipDurationMs,
+                    tempFile,
+                )
+        }
+        silentFile.delete()
+        if (!exported) {
+            exported = SlideshowVideoEncoder.encode(blended, decoded.fps, tempFile)
         }
         blended.forEach { if (!it.isRecycled) it.recycle() }
         if (!exported) {

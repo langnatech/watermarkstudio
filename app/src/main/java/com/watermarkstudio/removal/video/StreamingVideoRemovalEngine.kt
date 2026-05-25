@@ -29,7 +29,7 @@ object StreamingVideoRemovalEngine {
         silentOutputFile: File,
         progress: RemovalProgress?,
     ): StreamingResult? {
-        val preferMediaCodec = quality == RemovalQuality.ADVANCED
+        val preferMediaCodec = true
         val source =
             VideoFrameSourceFactory.open(
                 context,
@@ -45,7 +45,7 @@ object StreamingVideoRemovalEngine {
             } else {
                 OpticalFlowRecoveryProcessor.FlowAlgorithm.FARNEBACK
             }
-        val useFlow = quality == RemovalQuality.ADVANCED
+        val useFlow = true
 
         var prev: Bitmap? = null
         var curr: Bitmap? = null
@@ -115,11 +115,9 @@ object StreamingVideoRemovalEngine {
     ): Bitmap {
         var recovered =
             OpticalFlowRecoveryProcessor.recoverFrame(curr, prev, next, config, useFlow, algorithm)
-        if (quality == RemovalQuality.ADVANCED) {
-            val blended = FrameInpaintBlender.blendFrame(recovered, config, quality)
-            if (blended !== recovered) recovered.recycle()
-            recovered = blended
-        }
+        val blended = FrameInpaintBlender.blendFrame(recovered, config, quality)
+        if (blended !== recovered) recovered.recycle()
+        recovered = blended
         if (recovered === curr) {
             return recovered.copy(Bitmap.Config.ARGB_8888, false)
         }

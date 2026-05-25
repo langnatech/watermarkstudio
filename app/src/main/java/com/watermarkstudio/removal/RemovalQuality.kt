@@ -3,9 +3,9 @@ package com.watermarkstudio.removal
 import android.content.Context
 
 enum class RemovalQuality {
-    /** TELEA inpaint (image); temporal median JNI (video); slideshow export without audio. */
+    /** TELEA inpaint; video: optical-flow ROI + TELEA per frame + source audio mux. */
     STANDARD,
-    /** NS inpaint + seamlessClone (image); optical flow + inpaint/clone + mux with source audio (video). */
+    /** NS inpaint + seamlessClone; video: pyramid LK flow + NS/seamless per frame + source audio mux. */
     ADVANCED,
 }
 

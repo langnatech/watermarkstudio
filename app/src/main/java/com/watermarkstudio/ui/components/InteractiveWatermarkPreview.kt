@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,14 +43,17 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.watermarkstudio.R
+import com.watermarkstudio.model.MediaType
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.model.WatermarkType
+import com.watermarkstudio.removal.video.VideoFrameExtractor
 import kotlin.math.roundToInt
 
 @Composable
 fun InteractiveWatermarkPreview(
     mediaUri: Uri,
     config: WatermarkConfig,
+    mediaType: MediaType? = null,
     previewBitmap: Bitmap? = null,
     showBackground: Boolean = true,
     isActiveLayer: Boolean = true,
@@ -66,8 +70,9 @@ fun InteractiveWatermarkPreview(
     var mediaHeightPx by remember(mediaUri, previewBitmap) {
         mutableStateOf(previewBitmap?.height?.toFloat())
     }
+    var videoFrameBitmap by remember(mediaUri, mediaType) { mutableStateOf<Bitmap?>(null) }
 
-    LaunchedEffect(mediaUri, previewBitmap) {
+    LaunchedEffect(mediaUri, previewBitmap, mediaType) {
         if (previewBitmap != null) {
             mediaWidthPx = previewBitmap.width.toFloat()
             mediaHeightPx = previewBitmap.height.toFloat()
@@ -76,27 +81,44 @@ fun InteractiveWatermarkPreview(
         if (mediaUri == Uri.EMPTY) {
             mediaWidthPx = null
             mediaHeightPx = null
+            videoFrameBitmap?.recycle()
+            videoFrameBitmap = null
             return@LaunchedEffect
         }
-        val size =
+        val loaded =
             withContext(Dispatchers.IO) {
-                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                try {
-                    context.contentResolver.openInputStream(mediaUri)?.use {
-                        BitmapFactory.decodeStream(it, null, opts)
+                if (mediaType == MediaType.VIDEO) {
+                    val dims = VideoFrameExtractor.loadVideoDimensions(context, mediaUri)
+                    val frame = VideoFrameExtractor.loadPreviewFrame(context, mediaUri)
+                    Triple(dims?.first?.toFloat(), dims?.second?.toFloat(), frame)
+                } else {
+                    val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    try {
+                        context.contentResolver.openInputStream(mediaUri)?.use {
+                            BitmapFactory.decodeStream(it, null, opts)
+                        }
+                    } catch (_: Exception) {
                     }
-                    if (opts.outWidth > 0 && opts.outHeight > 0) {
-                        opts.outWidth.toFloat() to opts.outHeight.toFloat()
-                    } else {
-                        null
-                    }
-                } catch (_: Exception) {
-                    null
+                    val w = if (opts.outWidth > 0) opts.outWidth.toFloat() else null
+                    val h = if (opts.outHeight > 0) opts.outHeight.toFloat() else null
+                    Triple(w, h, null as Bitmap?)
                 }
             }
-        if (size != null) {
-            mediaWidthPx = size.first
-            mediaHeightPx = size.second
+        videoFrameBitmap?.recycle()
+        videoFrameBitmap = loaded.third
+        if (loaded.first != null && loaded.second != null) {
+            mediaWidthPx = loaded.first
+            mediaHeightPx = loaded.second
+        } else if (loaded.third != null) {
+            mediaWidthPx = loaded.third!!.width.toFloat()
+            mediaHeightPx = loaded.third!!.height.toFloat()
+        }
+    }
+
+    DisposableEffect(mediaUri) {
+        onDispose {
+            videoFrameBitmap?.recycle()
+            videoFrameBitmap = null
         }
     }
 
@@ -201,20 +223,31 @@ fun InteractiveWatermarkPreview(
 
         Box(modifier = Modifier.fillMaxSize()) {
             if (showBackground) {
-                if (previewBitmap != null) {
-                    Image(
-                        bitmap = previewBitmap.asImageBitmap(),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                    )
-                } else {
-                    AsyncImage(
-                        model = mediaUri,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                    )
+                when {
+                    previewBitmap != null -> {
+                        Image(
+                            bitmap = previewBitmap.asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
+                    videoFrameBitmap != null -> {
+                        Image(
+                            bitmap = videoFrameBitmap!!.asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
+                    mediaType != MediaType.VIDEO -> {
+                        AsyncImage(
+                            model = mediaUri,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
                 }
             }
 
@@ -338,6 +371,7 @@ private fun WatermarkOverlayChip(
 @Composable
 fun DraggableWatermarkOverlay(
     mediaUri: Uri,
+    mediaType: MediaType,
     config: WatermarkConfig,
     isActiveLayer: Boolean,
     onConfigUpdate: (WatermarkConfig) -> Unit,
@@ -345,6 +379,7 @@ fun DraggableWatermarkOverlay(
 ) {
     InteractiveWatermarkPreview(
         mediaUri = mediaUri,
+        mediaType = mediaType,
         config = config,
         showBackground = false,
         isActiveLayer = isActiveLayer,

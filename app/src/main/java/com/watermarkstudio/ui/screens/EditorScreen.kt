@@ -53,6 +53,7 @@ import com.watermarkstudio.model.ExportStatus
 import com.watermarkstudio.model.MediaType
 import com.watermarkstudio.model.MediaItem
 import com.watermarkstudio.removal.preview.RemovalPreviewHelper
+import com.watermarkstudio.removal.video.VideoFrameExtractor
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.model.WatermarkFontFamily
 import com.watermarkstudio.model.WatermarkType
@@ -62,8 +63,10 @@ import com.watermarkstudio.ui.components.DraggableWatermarkOverlay
 import com.watermarkstudio.ui.components.previewFontSizeSp
 import com.watermarkstudio.ui.components.InteractiveWatermarkPreview
 import com.watermarkstudio.viewmodel.WatermarkViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -373,6 +376,15 @@ fun EditorScreen(
                                     letterSpacing = 1.2.sp,
                                 )
                             }
+                            if (activeWatermarkIndex >= 0) {
+                                val removeConfig = uiState.watermarkConfigs[activeWatermarkIndex]
+                                RemovalRegionControls(
+                                    config = removeConfig,
+                                    onUpdate = { updated ->
+                                        viewModel.updateWatermark(activeWatermarkIndex, updated)
+                                    },
+                                )
+                            }
                             Text(
                                 stringResource(R.string.editor_remove_region_hint),
                                 color = Color(0xFF64748B),
@@ -426,11 +438,16 @@ fun EditorScreen(
                             onSelectMedia = launchMediaPicker,
                         )
 
-                        if (uiState.selectedMedia.isNotEmpty() && activeWatermarkIndex >= 0) {
+                        if (
+                            mode != WatermarkType.REMOVE &&
+                            uiState.selectedMedia.isNotEmpty() &&
+                            activeWatermarkIndex >= 0
+                        ) {
                             val previewItem = uiState.selectedMedia.first()
                             val activeConfig = uiState.watermarkConfigs[activeWatermarkIndex]
                             InteractiveWatermarkPreview(
                                 mediaUri = previewItem.uri,
+                                mediaType = previewItem.type,
                                 config = activeConfig,
                                 showBackground = true,
                                 isActiveLayer = true,
@@ -450,7 +467,7 @@ fun EditorScreen(
                             )
                         }
 
-                        if (activeWatermarkIndex >= 0) {
+                        if (activeWatermarkIndex >= 0 && mode != WatermarkType.REMOVE) {
                             WatermarkConfigTools(
                                 config = uiState.watermarkConfigs[activeWatermarkIndex],
                                 onUpdate = { updated ->
@@ -704,11 +721,15 @@ fun EditorScreen(
                                     .padding(horizontal = 10.dp, vertical = 5.dp)
                             ) {
                                 Text(
-                                    "CONV_VIEWFINDER [1 / ${uiState.selectedMedia.size}]",
+                                    stringResource(
+                                        R.string.editor_viewfinder_badge,
+                                        1,
+                                        uiState.selectedMedia.size,
+                                    ),
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Black,
                                     color = Color.White.copy(alpha = 0.9f),
-                                    letterSpacing = 1.2.sp
+                                    letterSpacing = 1.2.sp,
                                 )
                             }
                         }
@@ -1176,15 +1197,28 @@ fun PreviewContainer(
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var previewLoading by remember { mutableStateOf(false) }
 
-    LaunchedEffect(item.uri, removeConfig?.x, removeConfig?.y, removeConfig?.scale, isPremium) {
+    LaunchedEffect(item.uri, item.type, removeConfig?.x, removeConfig?.y, removeConfig?.scale, isPremium) {
         previewBitmap?.recycle()
         previewBitmap = null
-        if (item.type == MediaType.IMAGE && removeConfig != null) {
-            previewLoading = true
-            previewBitmap =
-                RemovalPreviewHelper.renderPreview(context, item.uri, removeConfig, isPremium)
-            previewLoading = false
-        }
+        previewLoading = true
+        previewBitmap =
+            when {
+                item.type == MediaType.IMAGE && removeConfig != null ->
+                    RemovalPreviewHelper.renderPreview(context, item.uri, removeConfig, isPremium)
+                item.type == MediaType.VIDEO && removeConfig != null ->
+                    RemovalPreviewHelper.renderVideoPreview(
+                        context,
+                        item.uri,
+                        removeConfig,
+                        isPremium,
+                    )
+                item.type == MediaType.VIDEO ->
+                    withContext(Dispatchers.IO) {
+                        VideoFrameExtractor.loadPreviewFrame(context, item.uri)
+                    }
+                else -> null
+            }
+        previewLoading = false
     }
     DisposableEffect(Unit) {
         onDispose {
@@ -1201,7 +1235,7 @@ fun PreviewContainer(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
             )
-        } else {
+        } else if (item.type != MediaType.VIDEO) {
             AsyncImage(
                 model = item.uri,
                 contentDescription = null,
@@ -1220,6 +1254,7 @@ fun PreviewContainer(
                 val isActive = index == activeConfigIndex
                 DraggableWatermarkOverlay(
                     mediaUri = item.uri,
+                    mediaType = item.type,
                     config = config,
                     isActiveLayer = isActive,
                     onConfigUpdate = { updated ->
@@ -1311,8 +1346,42 @@ private val watermarkTextColorPresets =
     )
 
 @Composable
+fun RemovalRegionControls(config: WatermarkConfig, onUpdate: (WatermarkConfig) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                stringResource(R.string.remove_region_size_format, config.scale),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF10B981),
+            )
+        }
+        Slider(
+            value = config.scale,
+            onValueChange = { onUpdate(config.copy(scale = it)) },
+            valueRange = 0.3f..3f,
+            colors =
+                SliderDefaults.colors(
+                    thumbColor = Color.White,
+                    activeTrackColor = Color(0xFF10B981),
+                    inactiveTrackColor = Color.White.copy(alpha = 0.1f),
+                ),
+        )
+        Text(
+            stringResource(R.string.editor_remove_drag_scale_hint),
+            color = Color(0xFF64748B),
+            fontSize = 11.sp,
+            lineHeight = 16.sp,
+        )
+    }
+}
+
+@Composable
 fun WatermarkConfigTools(config: WatermarkConfig, onUpdate: (WatermarkConfig) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (config.type == WatermarkType.REMOVE) {
+            return@Column
+        }
         if (config.type == WatermarkType.TEXT) {
             Text(
                 stringResource(R.string.text_style_lbl),
@@ -1420,47 +1489,49 @@ fun WatermarkConfigTools(config: WatermarkConfig, onUpdate: (WatermarkConfig) ->
             }
         }
 
-        Text(
-            stringResource(R.string.pos_layout_header),
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Black,
-            color = Color(0xFF6366F1),
-            letterSpacing = 1.sp,
-        )
-        Text(
-            stringResource(
-                R.string.x_offset_pct_format,
-                config.x.toInt(),
-            ) + " · " +
+        if (config.type == WatermarkType.IMAGE) {
+            Text(
+                stringResource(R.string.pos_layout_header),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                color = Color(0xFF6366F1),
+                letterSpacing = 1.sp,
+            )
+            Text(
                 stringResource(
-                    R.string.y_offset_pct_format,
-                    config.y.toInt(),
-                ),
-            fontSize = 12.sp,
-            color = Color(0xFF64748B),
-        )
+                    R.string.x_offset_pct_format,
+                    config.x.toInt(),
+                ) + " · " +
+                    stringResource(
+                        R.string.y_offset_pct_format,
+                        config.y.toInt(),
+                    ),
+                fontSize = 12.sp,
+                color = Color(0xFF64748B),
+            )
 
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    stringResource(R.string.opacity_pct_format, (config.opacity * 100).toInt()),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF94A3B8),
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        stringResource(R.string.opacity_pct_format, (config.opacity * 100).toInt()),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF94A3B8),
+                    )
+                }
+                Slider(
+                    value = config.opacity,
+                    onValueChange = { onUpdate(config.copy(opacity = it)) },
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor = Color(0xFF6366F1),
+                        inactiveTrackColor = Color.White.copy(alpha = 0.1f),
+                    ),
                 )
             }
-            Slider(
-                value = config.opacity,
-                onValueChange = { onUpdate(config.copy(opacity = it)) },
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.White,
-                    activeTrackColor = Color(0xFF6366F1),
-                    inactiveTrackColor = Color.White.copy(alpha = 0.1f)
-                )
-            )
         }
 
-        if (config.type != WatermarkType.TEXT) {
+        if (config.type == WatermarkType.IMAGE) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                     Text(

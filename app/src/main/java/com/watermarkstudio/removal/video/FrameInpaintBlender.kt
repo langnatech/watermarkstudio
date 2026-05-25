@@ -18,7 +18,9 @@ object FrameInpaintBlender {
         config: WatermarkConfig,
         quality: RemovalQuality,
     ): Bitmap {
-        if (quality == RemovalQuality.STANDARD) return frame
+        if (quality == RemovalQuality.STANDARD) {
+            return blendTelea(frame, config)
+        }
         val src = Mat()
         Utils.bitmapToMat(frame, src)
         val mask = MaskGenerator.createMaskMat(frame.width, frame.height, config)
@@ -33,6 +35,22 @@ object FrameInpaintBlender {
         mask.release()
         tmp.release()
         feather.release()
+        dst.release()
+        if (out != frame) frame.recycle()
+        return out
+    }
+
+    /** Per-frame TELEA inpaint (STANDARD video — matches image removal). */
+    fun blendTelea(frame: Bitmap, config: WatermarkConfig): Bitmap {
+        val src = Mat()
+        Utils.bitmapToMat(frame, src)
+        val mask = MaskGenerator.createMaskMat(frame.width, frame.height, config)
+        val dst = Mat()
+        Photo.inpaint(src, mask, dst, INPAINT_RADIUS, Photo.INPAINT_TELEA)
+        val out = Bitmap.createBitmap(dst.cols(), dst.rows(), Bitmap.Config.ARGB_8888)
+        Utils.matToBitmap(dst, out)
+        src.release()
+        mask.release()
         dst.release()
         if (out != frame) frame.recycle()
         return out

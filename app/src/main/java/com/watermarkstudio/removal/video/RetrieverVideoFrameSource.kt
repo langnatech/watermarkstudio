@@ -15,7 +15,7 @@ class RetrieverVideoFrameSource(
 ) : VideoFrameSource {
 
     private val retriever = MediaMetadataRetriever()
-    private val intervalUs = 1_000_000L / targetFps.coerceIn(4, 24)
+    private val intervalUs = 1_000_000L / VideoRemovalLimits.clampTargetFps(targetFps)
     private val clipUs = clipDurationMs * 1000L
     private var tUs = 0L
     private var emitted = 0

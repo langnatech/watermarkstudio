@@ -16,9 +16,12 @@
     <string name="tap_to_add_batch_media">点击添加批量媒体</string>
     <string name="choose_media_to_remove_stamp">选择需要消除图章的媒体</string>
     <string name="home_open_remove_studio">进入去水印工作台</string>
-    <string name="home_open_remove_subtitle">标准版 TELEA/时序中值；Pro 光流恢复、边缘融合并保留原声；共用每日导出额度</string>
-    <string name="editor_remove_region_hint">将绿色区域对准图章后导出。免费：标准修复 / 多帧时序中值（视频无原声）。Pro：光流时序恢复、无缝边缘融合，视频导出保留原音轨。效果取决于运动与背景。</string>
+    <string name="home_open_remove_subtitle">视频去水印保留原声；免费 15 秒最高 60fps，Pro 5 分钟保持源帧率；共用每日导出额度</string>
+    <string name="editor_remove_region_hint">将绿色区域对准图章后导出；预览为当前帧修复效果。免费：最长 15 秒、源帧率（最高 60fps）。Pro：最长 5 分钟、全程保持源帧率（不因时长降帧，仅处理更久）。均保留原声。效果取决于运动与背景。</string>
     <string name="editor_remove_controls_header">消除区域</string>
+    <string name="remove_region_size_format">消除区域大小 (%1$.1fx)</string>
+    <string name="editor_remove_drag_scale_hint">在上方预览中拖动绿色框调整位置；使用滑块调整区域大小。</string>
+    <string name="editor_viewfinder_badge">预览 %1$d / %2$d</string>
     <string name="remove_free_exports_badge">免费 · 今日剩余 %1$d 次</string>
     <string name="uhd_format_support_desc">支持批量超清视频、个性图章以及高级水印参数设置</string>
     <string name="studio_console_label">工作台控制面板</string>

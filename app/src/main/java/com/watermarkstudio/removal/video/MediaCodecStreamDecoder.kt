@@ -119,7 +119,7 @@ internal class MediaCodecStreamDecoder private constructor(
         }
     }
 
-    private val frameIntervalUs = 1_000_000L / targetFps.coerceIn(4, 24)
+    private val frameIntervalUs = 1_000_000L / VideoRemovalLimits.clampTargetFps(targetFps)
     private var nextSampleUs = 0L
     val clipDurationUs: Long =
         if (clipDurationMs > 0L) {

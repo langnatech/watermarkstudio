@@ -7,16 +7,21 @@ import android.net.Uri
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.removal.OpenCvBootstrap
 import com.watermarkstudio.removal.RemovalQuality
-import com.watermarkstudio.removal.image.ImageRemovalEngine
+import com.watermarkstudio.removal.video.VideoFrameExtractor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.opencv.android.Utils
+import org.opencv.core.Mat
+import org.opencv.imgproc.Imgproc
+import org.opencv.photo.Photo
 
 /**
- * Low-resolution inpaint preview for the remove-region overlay (phase 3b).
+ * Low-resolution inpaint preview for the remove-region overlay (images + video first frame).
  */
 object RemovalPreviewHelper {
 
     private const val PREVIEW_MAX_DIM = 480
+    private const val INPAINT_RADIUS = 5.0
 
     suspend fun renderPreview(
         context: Context,
@@ -41,22 +46,48 @@ object RemovalPreviewHelper {
             context.contentResolver.openInputStream(uri)?.use {
                 BitmapFactory.decodeStream(it, null, decodeOpts)
             } ?: return@withContext null
+        renderOnBitmap(bitmap, config, isPremium)
+    }
 
-        val quality = if (isPremium) RemovalQuality.ADVANCED else RemovalQuality.STANDARD
-        val src = org.opencv.core.Mat()
-        val dst = org.opencv.core.Mat()
-        val mask = com.watermarkstudio.removal.mask.MaskGenerator.createMaskMat(bitmap.width, bitmap.height, config)
+    /** Video: decode one frame then run the same inpaint preview as images. */
+    suspend fun renderVideoPreview(
+        context: Context,
+        uri: Uri,
+        config: WatermarkConfig,
+        isPremium: Boolean,
+    ): Bitmap? = withContext(Dispatchers.Default) {
+        if (!OpenCvBootstrap.ensureLoaded(context)) return@withContext null
+        val frame = VideoFrameExtractor.loadPreviewFrame(context, uri, PREVIEW_MAX_DIM) ?: return@withContext null
         try {
-            org.opencv.android.Utils.bitmapToMat(bitmap, src)
+            renderOnBitmap(frame, config, isPremium)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            frame.recycle()
+            null
+        }
+    }
+
+    private fun renderOnBitmap(
+        bitmap: Bitmap,
+        config: WatermarkConfig,
+        isPremium: Boolean,
+    ): Bitmap? {
+        val quality = if (isPremium) RemovalQuality.ADVANCED else RemovalQuality.STANDARD
+        val src = Mat()
+        val dst = Mat()
+        val mask = com.watermarkstudio.removal.mask.MaskGenerator.createMaskMat(bitmap.width, bitmap.height, config)
+        var result: Bitmap? = null
+        try {
+            Utils.bitmapToMat(bitmap, src)
             if (src.channels() == 4) {
-                org.opencv.imgproc.Imgproc.cvtColor(src, src, org.opencv.imgproc.Imgproc.COLOR_RGBA2BGR)
+                Imgproc.cvtColor(src, src, Imgproc.COLOR_RGBA2BGR)
             }
             when (quality) {
                 RemovalQuality.STANDARD -> {
-                    org.opencv.photo.Photo.inpaint(src, mask, dst, 5.0, org.opencv.photo.Photo.INPAINT_TELEA)
+                    Photo.inpaint(src, mask, dst, INPAINT_RADIUS, Photo.INPAINT_TELEA)
                 }
                 RemovalQuality.ADVANCED -> {
-                    val tmp = org.opencv.core.Mat()
+                    val tmp = Mat()
                     val feather =
                         com.watermarkstudio.removal.mask.MaskGenerator.createFeatheredMaskMat(
                             bitmap.width,
@@ -64,7 +95,7 @@ object RemovalPreviewHelper {
                             config,
                         )
                     try {
-                        org.opencv.photo.Photo.inpaint(src, mask, tmp, 5.0, org.opencv.photo.Photo.INPAINT_NS)
+                        Photo.inpaint(src, mask, tmp, INPAINT_RADIUS, Photo.INPAINT_NS)
                         com.watermarkstudio.removal.SeamlessBlendHelper.seamlessCloneInpaint(
                             src,
                             tmp,
@@ -81,16 +112,17 @@ object RemovalPreviewHelper {
                 }
             }
             if (dst.channels() == 3) {
-                org.opencv.imgproc.Imgproc.cvtColor(dst, dst, org.opencv.imgproc.Imgproc.COLOR_BGR2RGBA)
+                Imgproc.cvtColor(dst, dst, Imgproc.COLOR_BGR2RGBA)
             }
             val out = Bitmap.createBitmap(dst.cols(), dst.rows(), Bitmap.Config.ARGB_8888)
-            org.opencv.android.Utils.matToBitmap(dst, out)
-            bitmap.recycle()
-            out
+            Utils.matToBitmap(dst, out)
+            if (bitmap !== out) bitmap.recycle()
+            result = out
         } finally {
             src.release()
             dst.release()
             mask.release()
         }
+        return result
     }
 }
