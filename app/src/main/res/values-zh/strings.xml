@@ -102,7 +102,6 @@
     <string name="privilege_header">激活全部专业特权</string>
     <string name="privilege_subheader">助您以专业级的生产力执行视频/图片水印叠加、清除、转换，零约束完成每一次作品产出。</string>
     <string name="choose_pro_plan">选择适合您的订阅方案</string>
-    <string name="btn_start_trial">开启 3 天免费试用</string>
     <string name="btn_subscribe_now">立即订阅激活</string>
     <string name="btn_restore_purchase">恢复我已购买的权限</string>
     <string name="btn_terms_service">服务协议条款</string>
@@ -118,7 +117,7 @@
     
     <!-- Plans -->
     <string name="plan_weekly_title">按周订阅</string>
-    <string name="plan_weekly_tag">三天免费试用</string>
+    <string name="plan_weekly_tag">按周灵活订阅</string>
     <string name="plan_weekly_desc">零门槛体验全套 Pro 权益</string>
     <string name="plan_monthly_title">月度专业版</string>
     <string name="plan_monthly_tag">立省 30%</string>
@@ -127,9 +126,8 @@
     <string name="plan_yearly_tag">特省 60%</string>
     <string name="plan_yearly_desc">折合仅 4.8 元/月</string>
     <string name="unit_week">周</string>
-    <string name="plan_price_weekly_fallback">¥6.00 / 周</string>
-    <string name="plan_price_monthly_fallback">¥18.00 / 月</string>
-    <string name="plan_price_yearly_fallback">¥58.00 / 年</string>
+    <string name="plan_price_loading">加载中…</string>
+    <string name="plan_price_unavailable">—</string>
     <string name="plan_most_popular_badge">最受欢迎</string>
     <string name="unit_month">月</string>
     <string name="unit_year">年</string>

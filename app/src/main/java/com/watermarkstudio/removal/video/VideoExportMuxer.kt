@@ -36,7 +36,7 @@ object VideoExportMuxer {
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             }
 
-        val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        val encoder = VideoAvcCodecSelector.createAvcEncoder()
         encoder.configure(videoFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         encoder.start()
 

@@ -38,16 +38,22 @@ class RetrieverVideoFrameSource(
 
     override fun nextFrame(): Bitmap? {
         while (tUs <= clipUs && emitted < maxFrames) {
-            val frame = retriever.getFrameAtTime(tUs, MediaMetadataRetriever.OPTION_CLOSEST)
+            val raw = retriever.getFrameAtTime(tUs, MediaMetadataRetriever.OPTION_CLOSEST)
             tUs += intervalUs
-            if (frame != null) {
+            if (raw != null) {
+                val frame =
+                    raw.copy(Bitmap.Config.ARGB_8888, false).also {
+                        if (it !== raw) raw.recycle()
+                    }
                 val scaled = VideoFrameUtils.downscaleIfNeeded(frame, maxDimension)
+                val normalized = VideoFrameUtils.ensureDimensions(scaled, _width, _height)
+                if (normalized !== scaled) scaled.recycle()
                 if (_width == 0) {
-                    _width = scaled.width
-                    _height = scaled.height
+                    _width = normalized.width
+                    _height = normalized.height
                 }
                 emitted++
-                return scaled
+                return normalized
             }
         }
         return null

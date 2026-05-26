@@ -34,16 +34,19 @@
             </intent-filter>
         </activity>
 
-        <!-- Disable heavy Startup initializers; app initializes EmojiCompat & WorkManager in Application. -->
+        <!-- Disable Startup initializers that crash or duplicate Application init. -->
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"
             tools:node="merge">
             <meta-data
                 android:name="androidx.emoji2.text.EmojiCompatInitializer"
+                android:value="androidx.startup"
                 tools:node="remove" />
+            <!-- AdMob pulls WorkManager; this app does not schedule workers at startup. -->
             <meta-data
                 android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
 

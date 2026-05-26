@@ -3,7 +3,6 @@ package com.watermarkstudio.removal.video
 import android.graphics.Bitmap
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.removal.mask.MaskGenerator
-import org.opencv.android.Utils
 import org.opencv.core.Mat
 import org.opencv.imgproc.Imgproc
 import org.opencv.video.Video
@@ -37,61 +36,64 @@ object OpticalFlowRecoveryProcessor {
         }
         val width = current.width
         val height = current.height
-        val region = MaskGenerator.regionForConfig(width, height, config)
-        val currMat = Mat()
-        Utils.bitmapToMat(current, currMat)
-        val currGray = Mat()
-        Imgproc.cvtColor(currMat, currGray, Imgproc.COLOR_BGR2GRAY)
-        val outMat = currMat.clone()
-        var failures = 0
-        val accumulators = mutableListOf<DoubleArray>()
-        var validPixels = 0
-        if (previous != null) {
-            val prevMat = Mat()
-            Utils.bitmapToMat(previous, prevMat)
-            val prevGray = Mat()
-            Imgproc.cvtColor(prevMat, prevGray, Imgproc.COLOR_BGR2GRAY)
-            var r = warpRoi(prevGray, currGray, prevMat, region, algorithm)
-            if (r == null && algorithm == FlowAlgorithm.PYRAMID_LK) {
-                r = warpRoi(prevGray, currGray, prevMat, region, FlowAlgorithm.FARNEBACK)
+        val prevAligned = previous?.let { VideoFrameUtils.ensureDimensions(it, width, height) }
+        val nextAligned = next?.let { VideoFrameUtils.ensureDimensions(it, width, height) }
+        try {
+            val region = MaskGenerator.regionForConfig(width, height, config)
+            val currMat = VideoFrameUtils.bitmapToBgrMat(current)
+            val currGray = Mat()
+            Imgproc.cvtColor(currMat, currGray, Imgproc.COLOR_BGR2GRAY)
+            val outMat = currMat.clone()
+            var failures = 0
+            val accumulators = mutableListOf<DoubleArray>()
+            var validPixels = 0
+            if (prevAligned != null) {
+                val prevMat = VideoFrameUtils.bitmapToBgrMat(prevAligned)
+                val prevGray = Mat()
+                Imgproc.cvtColor(prevMat, prevGray, Imgproc.COLOR_BGR2GRAY)
+                var r = warpRoi(prevGray, currGray, prevMat, region, algorithm)
+                if (r == null && algorithm == FlowAlgorithm.PYRAMID_LK) {
+                    r = warpRoi(prevGray, currGray, prevMat, region, FlowAlgorithm.FARNEBACK)
+                }
+                prevGray.release()
+                prevMat.release()
+                if (r == null) failures++ else {
+                    accumulators.add(r.first)
+                    validPixels += r.second
+                }
             }
-            prevGray.release()
-            prevMat.release()
-            if (r == null) failures++ else {
-                accumulators.add(r.first)
-                validPixels += r.second
+            if (nextAligned != null && nextAligned !== prevAligned) {
+                val nextMat = VideoFrameUtils.bitmapToBgrMat(nextAligned)
+                val nextGray = Mat()
+                Imgproc.cvtColor(nextMat, nextGray, Imgproc.COLOR_BGR2GRAY)
+                var r = warpRoi(nextGray, currGray, nextMat, region, algorithm)
+                if (r == null && algorithm == FlowAlgorithm.PYRAMID_LK) {
+                    r = warpRoi(nextGray, currGray, nextMat, region, FlowAlgorithm.FARNEBACK)
+                }
+                nextGray.release()
+                nextMat.release()
+                if (r == null) failures++ else {
+                    accumulators.add(r.first)
+                    validPixels += r.second
+                }
             }
-        }
-        if (next != null && next !== previous) {
-            val nextMat = Mat()
-            Utils.bitmapToMat(next, nextMat)
-            val nextGray = Mat()
-            Imgproc.cvtColor(nextMat, nextGray, Imgproc.COLOR_BGR2GRAY)
-            var r = warpRoi(nextGray, currGray, nextMat, region, algorithm)
-            if (r == null && algorithm == FlowAlgorithm.PYRAMID_LK) {
-                r = warpRoi(nextGray, currGray, nextMat, region, FlowAlgorithm.FARNEBACK)
+            applyRoiAccumulators(outMat, region, accumulators, validPixels)
+            currGray.release()
+            if (failures > 0 && accumulators.isEmpty()) {
+                currMat.release()
+                outMat.release()
+                val window = listOfNotNull(prevAligned, current, nextAligned).distinct()
+                return RoiWindowMedianProcessor.recoverFrame(current, window, config)
             }
-            nextGray.release()
-            nextMat.release()
-            if (r == null) failures++ else {
-                accumulators.add(r.first)
-                validPixels += r.second
-            }
-        }
-        applyRoiAccumulators(outMat, region, accumulators, validPixels)
-        currGray.release()
-        if (failures > 0 && accumulators.isEmpty()) {
+            val out = VideoFrameUtils.bgrMatToArgbBitmap(outMat)
             currMat.release()
             outMat.release()
-            val window = listOfNotNull(previous, current, next).distinct()
-            return RoiWindowMedianProcessor.recoverFrame(current, window, config)
+            if (out != current) return out
+            return current
+        } finally {
+            if (prevAligned != null && prevAligned !== previous) prevAligned.recycle()
+            if (nextAligned != null && nextAligned !== next) nextAligned.recycle()
         }
-        val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        Utils.matToBitmap(outMat, out)
-        currMat.release()
-        outMat.release()
-        if (out != current) return out
-        return current
     }
 
     private fun applyRoiAccumulators(
@@ -136,17 +138,19 @@ object OpticalFlowRecoveryProcessor {
         }
         val width = frames.first().width
         val height = frames.first().height
+        val normalized =
+            frames.map { frame ->
+                val aligned = VideoFrameUtils.ensureDimensions(frame, width, height)
+                aligned
+            }
         val region = MaskGenerator.regionForConfig(width, height, config)
-        val mats = frames.map { b ->
-            val m = Mat()
-            Utils.bitmapToMat(b, m)
-            m
-        }
-        val grays = mats.map { m ->
-            val g = Mat()
-            Imgproc.cvtColor(m, g, Imgproc.COLOR_BGR2GRAY)
-            g
-        }
+        val mats = normalized.map { VideoFrameUtils.bitmapToBgrMat(it) }
+        val grays =
+            mats.map { m ->
+                val g = Mat()
+                Imgproc.cvtColor(m, g, Imgproc.COLOR_BGR2GRAY)
+                g
+            }
         var flowFailures = 0
         val outputs = mutableListOf<Bitmap>()
         for (i in mats.indices) {
@@ -168,40 +172,18 @@ object OpticalFlowRecoveryProcessor {
             }
             val outMat = mats[i].clone()
             if (accumulators.isNotEmpty() && validPixels > 0) {
-                val roiW = region.width
-                val roiH = region.height
-                var idx = 0
-                for (y in region.top until region.bottom) {
-                    for (x in region.left until region.right) {
-                        var b = 0.0
-                        var g = 0.0
-                        var r = 0.0
-                        var n = 0
-                        for (acc in accumulators) {
-                            val base = idx * 3
-                            if (acc[base] >= 0) {
-                                b += acc[base]
-                                g += acc[base + 1]
-                                r += acc[base + 2]
-                                n++
-                            }
-                        }
-                        if (n > 0) {
-                            outMat.put(y, x, b / n, g / n, r / n)
-                        }
-                        idx++
-                    }
-                }
+                applyRoiAccumulators(outMat, region, accumulators, validPixels)
             } else {
                 flowFailures++
             }
-            val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            Utils.matToBitmap(outMat, out)
+            outputs.add(VideoFrameUtils.bgrMatToArgbBitmap(outMat))
             outMat.release()
-            outputs.add(out)
         }
         grays.forEach { it.release() }
         mats.forEach { it.release() }
+        normalized.forEachIndexed { index, bitmap ->
+            if (bitmap !== frames[index] && !bitmap.isRecycled) bitmap.recycle()
+        }
         return if (flowFailures > frames.size / 2) {
             outputs.forEach { it.recycle() }
             TemporalMedianProcessor.apply(frames, config)
@@ -219,6 +201,9 @@ object OpticalFlowRecoveryProcessor {
         region: com.watermarkstudio.util.RemovalRegion,
         algorithm: FlowAlgorithm,
     ): Pair<DoubleArray, Int>? {
+        if (prevGray.cols() != currGray.cols() || prevGray.rows() != currGray.rows()) {
+            return null
+        }
         val flow = Mat()
         return try {
             when (algorithm) {

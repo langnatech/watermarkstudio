@@ -192,14 +192,16 @@ internal class MediaCodecStreamDecoder private constructor(
                                 image.close()
                                 if (bmp != null) {
                                     val scaled = VideoFrameUtils.downscaleIfNeeded(bmp, maxDimension)
+                                    val frame = VideoFrameUtils.ensureDimensions(scaled, _width, _height)
+                                    if (frame !== scaled) scaled.recycle()
                                     if (_width == 0) {
-                                        _width = scaled.width
-                                        _height = scaled.height
+                                        _width = frame.width
+                                        _height = frame.height
                                     }
                                     emitted++
                                     nextSampleUs += frameIntervalUs
                                     codec.releaseOutputBuffer(outIndex, true)
-                                    return scaled
+                                    return frame
                                 }
                             }
                             nextSampleUs += frameIntervalUs

@@ -54,6 +54,13 @@ class WatermarkViewModel : ViewModel() {
     val billingProducts: StateFlow<List<com.android.billingclient.api.ProductDetails>>
         get() = billingManager?.products ?: MutableStateFlow(emptyList())
 
+    val billingProductsQueryComplete: StateFlow<Boolean>
+        get() = billingManager?.productsQueryComplete ?: MutableStateFlow(false)
+
+    fun refreshSubscriptionProducts() {
+        billingManager?.refreshProductDetails()
+    }
+
     val purchaseSuccessEvent: StateFlow<Boolean>
         get() = billingManager?.purchaseCompletedEvent ?: MutableStateFlow(false)
 
@@ -464,14 +471,18 @@ class WatermarkViewModel : ViewModel() {
                                     removeConfig,
                                     maxDurMs,
                                     _uiState.value.isPremium,
-                                    progress = com.watermarkstudio.removal.RemovalProgress { sub ->
-                                        _uiState.value =
-                                            _uiState.value.copy(
-                                                processingProgress =
-                                                    (itemBase + itemSpan * sub.coerceIn(0f, 1f))
-                                                        .coerceIn(0f, 1f),
-                                            )
-                                    },
+                                    progress =
+                                        com.watermarkstudio.removal.RemovalProgress { sub ->
+                                            val progressValue =
+                                                (itemBase + itemSpan * sub.coerceIn(0f, 1f))
+                                                    .coerceIn(0f, 1f)
+                                            viewModelScope.launch(Dispatchers.Main.immediate) {
+                                                _uiState.value =
+                                                    _uiState.value.copy(
+                                                        processingProgress = progressValue,
+                                                    )
+                                            }
+                                        },
                                 )
                                 }
                             } else if (item.type == MediaType.IMAGE) {

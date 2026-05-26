@@ -2,18 +2,89 @@ package com.watermarkstudio.removal.video
 
 import android.graphics.Bitmap
 import android.media.Image
+import org.opencv.android.Utils
+import org.opencv.core.Mat
+import org.opencv.imgproc.Imgproc
 
 object VideoFrameUtils {
 
+    /**
+     * H.264 encoders and YUV conversion require ARGB_8888 and even width/height on many devices.
+     * This helper never recycles [bitmap]; callers own input-frame lifetime.
+     */
+    fun prepareForVideoEncode(bitmap: Bitmap): Bitmap {
+        var working =
+            if (bitmap.config == Bitmap.Config.ARGB_8888 && bitmap.isMutable) {
+                bitmap
+            } else {
+                bitmap.copy(Bitmap.Config.ARGB_8888, true)
+            }
+        val evenW = working.width and 0xFFFFFFFE.toInt()
+        val evenH = working.height and 0xFFFFFFFE.toInt()
+        if (evenW < 2 || evenH < 2) return working
+        if (evenW == working.width && evenH == working.height) return working
+        val cropped = Bitmap.createBitmap(working, 0, 0, evenW, evenH)
+        if (cropped != working && working !== bitmap) working.recycle()
+        return cropped
+    }
+
+    /** Copy to mutable ARGB_8888 for OpenCV; never recycles [bitmap] (decoder frames may still be in use). */
+    fun prepareForOpenCv(bitmap: Bitmap): Bitmap =
+        bitmap.copy(Bitmap.Config.ARGB_8888, true)
+
+    /**
+     * Scales [bitmap] to [targetWidth] x [targetHeight] when the decoder emits a different size
+     * (e.g. MediaCodec surface vs. downscale timing). Does not recycle [bitmap].
+     */
+    fun ensureDimensions(bitmap: Bitmap, targetWidth: Int, targetHeight: Int): Bitmap {
+        if (targetWidth <= 0 || targetHeight <= 0) return bitmap
+        if (bitmap.width == targetWidth && bitmap.height == targetHeight) return bitmap
+        return Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
+    }
+
+    /** Android ARGB bitmap → 8-bit 3-channel BGR Mat (required by inpaint / optical flow). */
+    fun bitmapToBgrMat(bitmap: Bitmap): Mat {
+        val safe = prepareForOpenCv(bitmap)
+        val rgba = Mat()
+        val bgr = Mat()
+        Utils.bitmapToMat(safe, rgba)
+        safe.recycle()
+        if (rgba.channels() == 4) {
+            Imgproc.cvtColor(rgba, bgr, Imgproc.COLOR_RGBA2BGR)
+        } else {
+            rgba.copyTo(bgr)
+        }
+        rgba.release()
+        return bgr
+    }
+
+    /** 3-channel BGR Mat → ARGB_8888 bitmap. */
+    fun bgrMatToArgbBitmap(bgr: Mat): Bitmap {
+        val rgba = Mat()
+        if (bgr.channels() == 3) {
+            Imgproc.cvtColor(bgr, rgba, Imgproc.COLOR_BGR2RGBA)
+        } else {
+            bgr.copyTo(rgba)
+        }
+        val out = Bitmap.createBitmap(rgba.cols(), rgba.rows(), Bitmap.Config.ARGB_8888)
+        Utils.matToBitmap(rgba, out)
+        rgba.release()
+        return out
+    }
+
     fun bitmapToYuv420(bitmap: Bitmap, width: Int, height: Int): ByteArray {
-        val argb = IntArray(width * height)
-        bitmap.getPixels(argb, 0, width, 0, 0, width, height)
-        val yuv = ByteArray(width * height * 3 / 2)
+        val safe = prepareForVideoEncode(bitmap)
+        val w = safe.width
+        val h = safe.height
+        val argb = IntArray(w * h)
+        safe.getPixels(argb, 0, w, 0, 0, w, h)
+        if (safe !== bitmap) safe.recycle()
+        val yuv = ByteArray(w * h * 3 / 2)
         var yIndex = 0
-        var uvIndex = width * height
-        for (j in 0 until height) {
-            for (i in 0 until width) {
-                val c = argb[j * width + i]
+        var uvIndex = w * h
+        for (j in 0 until h) {
+            for (i in 0 until w) {
+                val c = argb[j * w + i]
                 val r = (c shr 16) and 0xff
                 val g = (c shr 8) and 0xff
                 val b = c and 0xff

@@ -2,12 +2,17 @@ package com.watermarkstudio.removal.video
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 
 object VideoFrameSourceFactory {
 
+    private const val TAG = "VideoFrameSource"
+
     /**
-     * Opens a streaming frame source. When [preferMediaCodec] is true, tries MediaCodec first
-     * (better for H.265 / rotation metadata), then falls back to [RetrieverVideoFrameSource].
+     * Opens a streaming frame source.
+     *
+     * - Samsung Exynos: **requires** FFmpeg software frames (no Retriever / app MediaCodec decode).
+     * - Other devices: [RetrieverVideoFrameSource] unless [preferMediaCodec] is true.
      */
     fun open(
         context: Context,
@@ -16,8 +21,35 @@ object VideoFrameSourceFactory {
         maxDimension: Int,
         preferMediaCodec: Boolean,
     ): VideoFrameSource? {
+        val exynosSafe = VideoHardwareCompat.prefersSoftwareFrameDecode()
+
+        if (exynosSafe) {
+            if (!FfmpegRemuxHelper.isAvailable()) {
+                Log.e(TAG, "FFmpeg-kit required on Exynos for video decode but unavailable")
+                return null
+            }
+            return try {
+                Log.i(
+                    TAG,
+                    "Opening FfmpegVideoFrameSource (Exynos-safe, fps=${sampling.targetFps}, maxFrames=${sampling.maxFrames})",
+                )
+                FfmpegVideoFrameSource(
+                    context,
+                    uri,
+                    sampling.clipDurationMs,
+                    maxDimension,
+                    sampling.targetFps,
+                    sampling.maxFrames,
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "FFmpeg frame source failed on Exynos (no Retriever fallback)", e)
+                null
+            }
+        }
+
         if (preferMediaCodec) {
             try {
+                Log.i(TAG, "Opening MediaCodecVideoFrameSource")
                 return MediaCodecVideoFrameSource(
                     context,
                     uri,
@@ -27,10 +59,12 @@ object VideoFrameSourceFactory {
                     sampling.maxFrames,
                 )
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.w(TAG, "MediaCodec frame source failed", e)
             }
         }
+
         return try {
+            Log.i(TAG, "Opening RetrieverVideoFrameSource")
             RetrieverVideoFrameSource(
                 context,
                 uri,
@@ -40,7 +74,7 @@ object VideoFrameSourceFactory {
                 sampling.maxFrames,
             )
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w(TAG, "Retriever frame source failed", e)
             null
         }
     }

@@ -29,7 +29,8 @@ object StreamingVideoRemovalEngine {
         silentOutputFile: File,
         progress: RemovalProgress?,
     ): StreamingResult? {
-        val preferMediaCodec = true
+        // Export: no app MediaCodec decode. Exynos uses FFmpeg batches via VideoFrameSourceFactory.
+        val preferMediaCodec = false
         val source =
             VideoFrameSourceFactory.open(
                 context,
@@ -55,9 +56,12 @@ object StreamingVideoRemovalEngine {
         try {
             source.use { src ->
                 outputFps = src.fps
-                curr = src.nextFrame() ?: return null
+                val first = src.nextFrame() ?: return null
+                val preparedFirst = VideoFrameUtils.prepareForVideoEncode(first)
+                if (preparedFirst !== first) first.recycle()
+                curr = preparedFirst
                 val encoder =
-                    IncrementalVideoEncoder(silentOutputFile, curr!!.width, curr!!.height, src.fps)
+                    IncrementalVideoEncoder(silentOutputFile, curr.width, curr.height, src.fps)
                 try {
                     while (true) {
                         val next = src.nextFrame()
@@ -96,8 +100,8 @@ object StreamingVideoRemovalEngine {
             if (frameCount == 0) return null
             progress?.report(0.75f)
             return StreamingResult(silentOutputFile, frameCount, outputFps)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (t: Throwable) {
+            t.printStackTrace()
             prev?.recycle()
             curr?.recycle()
             return null
@@ -113,14 +117,50 @@ object StreamingVideoRemovalEngine {
         useFlow: Boolean,
         algorithm: OpticalFlowRecoveryProcessor.FlowAlgorithm,
     ): Bitmap {
-        var recovered =
-            OpticalFlowRecoveryProcessor.recoverFrame(curr, prev, next, config, useFlow, algorithm)
-        val blended = FrameInpaintBlender.blendFrame(recovered, config, quality)
-        if (blended !== recovered) recovered.recycle()
-        recovered = blended
-        if (recovered === curr) {
-            return recovered.copy(Bitmap.Config.ARGB_8888, false)
+        val base = VideoFrameUtils.prepareForVideoEncode(curr)
+        val prevFrame = prev?.let { VideoFrameUtils.ensureDimensions(it, base.width, base.height) }
+        val nextFrame = VideoFrameUtils.ensureDimensions(next, base.width, base.height)
+        return try {
+            var recovered =
+                OpticalFlowRecoveryProcessor.recoverFrame(
+                    base,
+                    prevFrame,
+                    nextFrame,
+                    config,
+                    useFlow,
+                    algorithm,
+                )
+            val blended = FrameInpaintBlender.blendFrame(recovered, config, quality)
+            recycleIntermediate(recovered, base, curr, prevFrame, nextFrame)
+            recovered = blended
+            val encoded = VideoFrameUtils.prepareForVideoEncode(recovered)
+            if (encoded !== recovered) recovered.recycle()
+            encoded
+        } catch (t: Throwable) {
+            t.printStackTrace()
+            VideoFrameUtils.prepareForVideoEncode(base.copy(Bitmap.Config.ARGB_8888, false))
+        } finally {
+            if (base !== curr) base.recycle()
+            if (prevFrame != null && prevFrame !== prev) prevFrame.recycle()
+            if (nextFrame !== next) nextFrame.recycle()
         }
-        return recovered
+    }
+
+    private fun recycleIntermediate(
+        bitmap: Bitmap,
+        base: Bitmap,
+        curr: Bitmap,
+        prevFrame: Bitmap?,
+        nextFrame: Bitmap,
+    ) {
+        if (
+            bitmap !== base &&
+            bitmap !== curr &&
+            bitmap !== prevFrame &&
+            bitmap !== nextFrame &&
+            !bitmap.isRecycled
+        ) {
+            bitmap.recycle()
+        }
     }
 }

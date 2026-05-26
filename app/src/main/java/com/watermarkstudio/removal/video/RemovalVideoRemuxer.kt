@@ -10,7 +10,9 @@ import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.Transformer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.coroutines.resume
 
@@ -45,32 +47,34 @@ object RemovalVideoRemuxer {
                 .build()
         val audioSequence = EditedMediaItemSequence.Builder(audioItem).build()
         val composition = Composition.Builder(videoSequence, audioSequence).build()
-        return suspendCancellableCoroutine { cont ->
-            val transformer =
-                Transformer.Builder(context)
-                    .setVideoMimeType(MimeTypes.VIDEO_H264)
-                    .addListener(
-                        object : Transformer.Listener {
-                            override fun onCompleted(
-                                composition: Composition,
-                                exportResult: androidx.media3.transformer.ExportResult,
-                            ) {
-                                cont.resume(outputFile.exists() && outputFile.length() > 0L)
-                            }
+        return withContext(Dispatchers.Main.immediate) {
+            suspendCancellableCoroutine { cont ->
+                val transformer =
+                    Transformer.Builder(context)
+                        .setVideoMimeType(MimeTypes.VIDEO_H264)
+                        .addListener(
+                            object : Transformer.Listener {
+                                override fun onCompleted(
+                                    composition: Composition,
+                                    exportResult: androidx.media3.transformer.ExportResult,
+                                ) {
+                                    cont.resume(outputFile.exists() && outputFile.length() > 0L)
+                                }
 
-                            override fun onError(
-                                composition: Composition,
-                                exportResult: androidx.media3.transformer.ExportResult,
-                                exportException: ExportException,
-                            ) {
-                                exportException.printStackTrace()
-                                cont.resume(false)
-                            }
-                        },
-                    )
-                    .build()
-            cont.invokeOnCancellation { transformer.cancel() }
-            transformer.start(composition, outputFile.absolutePath)
+                                override fun onError(
+                                    composition: Composition,
+                                    exportResult: androidx.media3.transformer.ExportResult,
+                                    exportException: ExportException,
+                                ) {
+                                    exportException.printStackTrace()
+                                    cont.resume(false)
+                                }
+                            },
+                        )
+                        .build()
+                cont.invokeOnCancellation { transformer.cancel() }
+                transformer.start(composition, outputFile.absolutePath)
+            }
         }
     }
 }

@@ -19,7 +19,7 @@ class IncrementalVideoEncoder(
 
     private val bitRate = (width * height * fps * 0.15f).toInt().coerceIn(1_000_000, 8_000_000)
     private val frameDurationUs = (1_000_000f / fps.coerceAtLeast(1f)).toLong()
-    private val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+    private val encoder = VideoAvcCodecSelector.createAvcEncoder()
     private val muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
     private val bufferInfo = MediaCodec.BufferInfo()
     private var trackIndex = -1
@@ -42,6 +42,7 @@ class IncrementalVideoEncoder(
 
     fun submitFrame(bitmap: Bitmap): Boolean {
         if (inputDone) return false
+        if (bitmap.width < 2 || bitmap.height < 2) return false
         queueInput(bitmap)
         return drainOutputs(endOfStream = false)
     }

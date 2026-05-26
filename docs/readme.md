@@ -85,7 +85,14 @@ https://liang.github.io/watermark-studio/privacy-policy.html
   - **阶段 3c**：ADVANCED 流式优先 MediaCodec 解码；Pro 原声导出 Media3 → FFmpeg-kit（LGPL）回退。
   - **编辑器**：底部面板含可拖动预览图；导出时全屏进度遮罩 + 结果横幅（成功/部分成功/失败）。
 - Release AdMob ID：`app/src/release/res/values/admob.xml`。
-- Play 订阅 SKU 与 `BillingProducts.kt` 一致；法律页 URL 与本 Pages 部署地址一致。
+- Play 订阅 SKU 与 `BillingProducts.kt` 一致（`com.watermark.pro.weekly/monthly/yearly`）；**展示价与商品名**从 Play 拉取，见 `billing/SubscriptionDisplayHelper.kt`；法律页 URL 与本 Pages 部署地址一致。
+
+### Release 稳定性（2026-05）
+
+| 现象 | 处理 |
+|------|------|
+| 启动崩溃 `Failed to create WorkDatabase` / `WorkManagerInitializer` | AdMob 会传递依赖 WorkManager；应用显式对齐 `work-runtime-ktx` 到版本目录中的新版，Manifest 禁用启动期 `WorkManagerInitializer`（应用不调度 Worker），`proguard-rules.pro` 保留 WorkManager/Room 数据库类以防库侧懒加载 |
+| Release 导出视频 `SIGSEGV` / OpenCV 断言 | Exynos：FFmpeg 软件抽帧 + 本地 `input_src.mp4`；**1.0.16+** 按真实片长封顶帧数，末批 seek 超 EOF 时视为结束（不再 `FFmpeg batch produced no frames`） |
 
 ### 去水印 QA 要点
 
@@ -95,3 +102,4 @@ https://liang.github.io/watermark-studio/privacy-policy.html
 | 免费视频 | 无原声 |
 | 运动背景 | ADVANCED 优于 STANDARD；极端运动可回退中值 |
 | 模拟器 | `error_remove_video_not_supported` |
+| **Release 包** | 选 8s 内 H.264 视频 → 去水印 → 批量导出，无 native 崩溃 |

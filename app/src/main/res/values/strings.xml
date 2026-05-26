@@ -109,7 +109,6 @@
     <string name="privilege_header">Unlock Premium Potential</string>
     <string name="privilege_subheader">Elevate your watermarking and media processing to professional standards without any constraints.</string>
     <string name="choose_pro_plan">CHOOSE A PRO PLAN</string>
-    <string name="btn_start_trial">Start 3-Day Free Trial</string>
     <string name="btn_subscribe_now">Subscribe Now</string>
     <string name="btn_restore_purchase">Restore Purchase</string>
     <string name="btn_terms_service">Terms of Service</string>
@@ -125,7 +124,7 @@
     
     <!-- Plans -->
     <string name="plan_weekly_title">Weekly Access</string>
-    <string name="plan_weekly_tag">3-Day Free Trial</string>
+    <string name="plan_weekly_tag">Flexible weekly</string>
     <string name="plan_weekly_desc">Experience all features</string>
     <string name="plan_monthly_title">Monthly Pro</string>
     <string name="plan_monthly_tag">Save 30%</string>
@@ -134,9 +133,8 @@
     <string name="plan_yearly_tag">Save 60%</string>
     <string name="plan_yearly_desc">Only $4.8/month</string>
     <string name="unit_week">week</string>
-    <string name="plan_price_weekly_fallback">¥6.00 / week</string>
-    <string name="plan_price_monthly_fallback">¥18.00 / month</string>
-    <string name="plan_price_yearly_fallback">¥58.00 / year</string>
+    <string name="plan_price_loading">…</string>
+    <string name="plan_price_unavailable">—</string>
     <string name="plan_most_popular_badge">MOST POPULAR</string>
     <string name="unit_month">month</string>
     <string name="unit_year">year</string>

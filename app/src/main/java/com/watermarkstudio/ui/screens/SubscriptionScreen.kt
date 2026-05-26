@@ -32,7 +32,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.watermarkstudio.billing.BillingProducts
+import com.watermarkstudio.billing.SubscriptionDisplayHelper
+import com.watermarkstudio.billing.SubscriptionPlanRow
 import com.watermarkstudio.util.BillingUiEvent
 import com.watermarkstudio.util.RestorePurchaseResult
 import com.watermarkstudio.viewmodel.WatermarkViewModel
@@ -48,6 +49,7 @@ fun SubscriptionScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val billingProducts by viewModel.billingProducts.collectAsStateWithLifecycle()
+    val billingProductsQueryComplete by viewModel.billingProductsQueryComplete.collectAsStateWithLifecycle()
     val purchaseSuccess by viewModel.purchaseSuccessEvent.collectAsStateWithLifecycle()
     val purchaseFlowFinished by viewModel.purchaseFlowFinishedEvent.collectAsStateWithLifecycle()
     val billingUiEvent by viewModel.billingUiEvent.collectAsStateWithLifecycle()
@@ -71,65 +73,84 @@ fun SubscriptionScreen(
     val unitMonth = stringResource(R.string.unit_month)
     val unitYear = stringResource(R.string.unit_year)
 
-    // Extractor helper for localized store prices
-    fun getProductPrice(productId: String, defaultPrice: String): String {
-        val details = billingProducts.find { it.productId == productId } ?: return defaultPrice
-        val pricingPhase = details.subscriptionOfferDetails?.firstOrNull()
-            ?.pricingPhases?.pricingPhaseList?.firstOrNull() ?: return defaultPrice
-        return "${pricingPhase.formattedPrice} / ${when(productId) {
-            BillingProducts.WEEKLY -> unitWeek
-            BillingProducts.MONTHLY -> unitMonth
-            BillingProducts.YEARLY -> unitYear
-            else -> unitMonth
-        }}"
+    val priceLoadingLabel = stringResource(R.string.plan_price_loading)
+    val priceUnavailableLabel = stringResource(R.string.plan_price_unavailable)
+
+    val periodLabels = remember(unitWeek, unitMonth, unitYear) {
+        SubscriptionDisplayHelper.PeriodLabels(
+            week = unitWeek,
+            month = unitMonth,
+            year = unitYear,
+        )
     }
 
-    // Available subscription plans
-    val priceWeeklyFallback = stringResource(R.string.plan_price_weekly_fallback)
-    val priceMonthlyFallback = stringResource(R.string.plan_price_monthly_fallback)
-    val priceYearlyFallback = stringResource(R.string.plan_price_yearly_fallback)
-    val plans =
-        remember(
-            billingProducts,
-            planWeeklyTitle,
-            planMonthlyTitle,
-            planYearlyTitle,
-            priceWeeklyFallback,
-            priceMonthlyFallback,
-            priceYearlyFallback,
-        ) {
-            listOf(
-                SubPlan(
-                    "weekly",
-                    planWeeklyTitle,
-                    getProductPrice(BillingProducts.WEEKLY, priceWeeklyFallback),
-                    planWeeklyTag,
-                    planWeeklyDesc,
+    val planRows: List<SubscriptionPlanRow> = remember(
+        billingProducts,
+        planWeeklyTitle,
+        planWeeklyDesc,
+        planWeeklyTag,
+        planMonthlyTitle,
+        planMonthlyDesc,
+        planMonthlyTag,
+        planYearlyTitle,
+        planYearlyDesc,
+        planYearlyTag,
+        periodLabels,
+    ) {
+        SubscriptionDisplayHelper.buildPlanRows(
+            productDetailsList = billingProducts,
+            marketingCopies = listOf(
+                SubscriptionDisplayHelper.PlanMarketingCopy(
+                    planId = "weekly",
+                    fallbackTitle = planWeeklyTitle,
+                    fallbackDescription = planWeeklyDesc,
+                    tag = planWeeklyTag,
                 ),
-                SubPlan(
-                    "monthly",
-                    planMonthlyTitle,
-                    getProductPrice(BillingProducts.MONTHLY, priceMonthlyFallback),
-                    planMonthlyTag,
-                    planMonthlyDesc,
+                SubscriptionDisplayHelper.PlanMarketingCopy(
+                    planId = "monthly",
+                    fallbackTitle = planMonthlyTitle,
+                    fallbackDescription = planMonthlyDesc,
+                    tag = planMonthlyTag,
                     isPopular = true,
                 ),
-                SubPlan(
-                    "yearly",
-                    planYearlyTitle,
-                    getProductPrice(BillingProducts.YEARLY, priceYearlyFallback),
-                    planYearlyTag,
-                    planYearlyDesc,
+                SubscriptionDisplayHelper.PlanMarketingCopy(
+                    planId = "yearly",
+                    fallbackTitle = planYearlyTitle,
+                    fallbackDescription = planYearlyDesc,
+                    tag = planYearlyTag,
                 ),
+            ),
+            periodLabels = periodLabels,
+        )
+    }
+
+    val plans = remember(planRows, priceLoadingLabel, priceUnavailableLabel, billingProductsQueryComplete) {
+        planRows.map { row ->
+            val priceText = when {
+                row.priceText != null -> row.priceText
+                !billingProductsQueryComplete -> priceLoadingLabel
+                else -> priceUnavailableLabel
+            }
+            SubPlan(
+                id = row.planId,
+                title = row.title,
+                price = priceText,
+                tag = row.tag,
+                desc = row.description,
+                isPopular = row.isPopular,
+                isPurchasable = row.isPurchasable,
             )
         }
-    
+    }
+
     var selectedPlanId by remember { mutableStateOf("monthly") }
+    val selectedPlanPurchasable = plans.find { it.id == selectedPlanId }?.isPurchasable == true
     var isPurchasing by remember { mutableStateOf(false) }
     var showSuccessDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.checkPremium(context)
+        viewModel.refreshSubscriptionProducts()
     }
 
     LaunchedEffect(purchaseFlowFinished) {
@@ -357,7 +378,7 @@ fun SubscriptionScreen(
                                 containerColor = Color(0xFF3B82F6), // Blue 500
                                 contentColor = Color.White
                             ),
-                            enabled = !isPurchasing
+                            enabled = !isPurchasing && selectedPlanPurchasable
                         ) {
                             if (isPurchasing) {
                                 CircularProgressIndicator(
@@ -367,7 +388,7 @@ fun SubscriptionScreen(
                                 )
                             } else {
                                 Text(
-                                    text = if (selectedPlanId == "weekly") stringResource(R.string.btn_start_trial) else stringResource(R.string.btn_subscribe_now),
+                                    text = stringResource(R.string.btn_subscribe_now),
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -739,5 +760,6 @@ data class SubPlan(
     val price: String,
     val tag: String,
     val desc: String,
-    val isPopular: Boolean = false
+    val isPopular: Boolean = false,
+    val isPurchasable: Boolean = false,
 )

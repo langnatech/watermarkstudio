@@ -153,6 +153,12 @@ object VideoRemovalLimits {
         return frameCount * 1_000_000L / fpsInt
     }
 
+    /** Limits frame budget to what [durationMs] at [fps] can actually contain. */
+    fun capFrameCount(maxFrames: Int, durationMs: Long, fps: Int): Int {
+        if (durationMs <= 0L || maxFrames <= 0) return maxFrames.coerceAtLeast(0)
+        return minOf(maxFrames, frameCountFor(durationMs, fps))
+    }
+
     private fun frameCountFor(durationMs: Long, fps: Int): Int {
         if (durationMs <= 0L) return 1
         return ((durationMs * fps) / 1000L).toInt().coerceAtLeast(1)

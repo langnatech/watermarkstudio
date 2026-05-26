@@ -7,11 +7,23 @@ import com.watermarkstudio.removal.OpenCvBootstrap
 import com.watermarkstudio.removal.RemovalCapability
 import com.watermarkstudio.removal.RemovalProgress
 import com.watermarkstudio.removal.RemovalQuality
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
+import android.util.Log
 import java.io.File
+import java.util.concurrent.Executors
 
 object VideoRemovalEngine {
+
+    private const val TAG = "VideoRemovalEngine"
+
+    /** OpenCV native code is not safe under parallel calls; serialize all video removal work. */
+    private val removalDispatcher =
+        Executors
+            .newSingleThreadExecutor { runnable ->
+                Thread(runnable, "wm-video-removal").apply { isDaemon = true }
+            }
+            .asCoroutineDispatcher()
 
     suspend fun removeRegion(
         context: Context,
@@ -22,9 +34,44 @@ object VideoRemovalEngine {
         isPremium: Boolean,
         quality: RemovalQuality,
         progress: RemovalProgress? = null,
-    ): Uri? = withContext(Dispatchers.Default) {
-        if (!OpenCvBootstrap.ensureLoaded(context)) return@withContext null
-        if (!RemovalCapability.supportsVideoRemoval(context)) return@withContext null
+    ): Uri? =
+        withContext(removalDispatcher) {
+            try {
+                removeRegionImpl(
+                    context,
+                    uri,
+                    config,
+                    maxDurationMs,
+                    maxDimension,
+                    isPremium,
+                    quality,
+                    progress,
+                )
+            } catch (t: Throwable) {
+                Log.e(TAG, "Video removal crashed", t)
+                null
+            }
+        }
+
+    private suspend fun removeRegionImpl(
+        context: Context,
+        uri: Uri,
+        config: WatermarkConfig,
+        maxDurationMs: Long,
+        maxDimension: Int,
+        isPremium: Boolean,
+        quality: RemovalQuality,
+        progress: RemovalProgress?,
+    ): Uri? {
+        if (!OpenCvBootstrap.ensureLoaded(context)) return null
+        if (!RemovalCapability.supportsVideoRemoval(context)) return null
+        if (
+            VideoHardwareCompat.prefersSoftwareFrameDecode() &&
+            !FfmpegRemuxHelper.isAvailable()
+        ) {
+            Log.e(TAG, "FFmpeg-kit required for video removal on Exynos")
+            return null
+        }
 
         val clipMs =
             if (maxDurationMs > 0L) {
@@ -55,7 +102,12 @@ object VideoRemovalEngine {
 
         if (streamResult == null) {
             silentFile.delete()
-            return@withContext removeRegionBatch(
+            // Exynos uses FFmpeg frame source; batch fallback would duplicate work and re-hit SAF limits.
+            if (VideoHardwareCompat.prefersSoftwareFrameDecode()) {
+                Log.e(TAG, "Streaming video removal failed on Exynos (FFmpeg path)")
+                return null
+            }
+            return removeRegionBatch(
                 context,
                 uri,
                 config,
@@ -79,11 +131,11 @@ object VideoRemovalEngine {
         if (!exported) {
             silentFile.delete()
             tempFile.delete()
-            return@withContext null
+            return null
         }
         silentFile.delete()
         report(1f, 1f, 1f)
-        saveVideoToGallery(context, tempFile)
+        return saveVideoToGallery(context, tempFile)
     }
 
     private suspend fun exportWithSourceAudio(
@@ -122,31 +174,22 @@ object VideoRemovalEngine {
             progress?.report(stageStart + (stageEnd - stageStart) * fraction.coerceIn(0f, 1f))
         }
         val decoded =
-            MediaCodecFrameDecoder.decode(
+            VideoFrameExtractor.extract(
                 context,
                 uri,
                 sampling.clipDurationMs,
                 maxDimension,
                 targetFps = sampling.targetFps,
-            )
-                ?: VideoFrameExtractor.extract(
-                    context,
-                    uri,
-                    sampling.clipDurationMs,
-                    maxDimension,
-                    targetFps = sampling.targetFps,
-                    maxFrames = sampling.maxFrames,
+                maxFrames = sampling.maxFrames,
+            )?.let { ext ->
+                DecodedVideoSequence(
+                    bitmaps = ext.bitmaps,
+                    fps = ext.fps,
+                    width = ext.width,
+                    height = ext.height,
+                    clipDurationUs = sampling.clipDurationMs * 1000L,
                 )
-                    ?.let { ext ->
-                        DecodedVideoSequence(
-                            bitmaps = ext.bitmaps,
-                            fps = ext.fps,
-                            width = ext.width,
-                            height = ext.height,
-                            clipDurationUs = sampling.clipDurationMs * 1000L,
-                        )
-                    }
-                ?: return null
+            } ?: return null
 
         val recovered =
             OpticalFlowRecoveryProcessor.recover(decoded.bitmaps, config, useOpticalFlow = true)

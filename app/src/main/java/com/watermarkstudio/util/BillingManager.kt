@@ -41,6 +41,10 @@ class BillingManager(
     private val _products = MutableStateFlow<List<ProductDetails>>(emptyList())
     val products: StateFlow<List<ProductDetails>> = _products.asStateFlow()
 
+    /** True after the first [queryProductDetails] attempt has finished (success or failure). */
+    private val _productsQueryComplete = MutableStateFlow(false)
+    val productsQueryComplete: StateFlow<Boolean> = _productsQueryComplete.asStateFlow()
+
     private val _purchaseCompletedEvent = MutableStateFlow<Boolean>(false)
     val purchaseCompletedEvent: StateFlow<Boolean> = _purchaseCompletedEvent.asStateFlow()
 
@@ -204,6 +208,14 @@ class BillingManager(
         }
     }
 
+    fun refreshProductDetails() {
+        if (!billingClient.isReady) {
+            connectToPlayStore()
+            return
+        }
+        queryProductDetails()
+    }
+
     private fun queryProductDetails() {
         if (!billingClient.isReady) return
 
@@ -219,11 +231,31 @@ class BillingManager(
             .build()
 
         billingClient.queryProductDetailsAsync(params) { billingResult, productDetailsList ->
+            _productsQueryComplete.value = true
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                 Log.d(TAG, "Product Details Query Completed: ${productDetailsList.size} items found.")
                 _products.value = productDetailsList
+                if (productDetailsList.isEmpty()) {
+                    Log.w(TAG, "Product details list empty. Check Play Console activation and test track.")
+                } else {
+                    productDetailsList.forEach { details ->
+                        val phase = details.subscriptionOfferDetails?.firstOrNull()
+                            ?.pricingPhases?.pricingPhaseList?.firstOrNull()
+                        Log.d(
+                            TAG,
+                            "SKU ${details.productId}: name=${details.name}, price=${phase?.formattedPrice}, period=${phase?.billingPeriod}",
+                        )
+                    }
+                }
             } else {
                 Log.e(TAG, "Failed querying product details: ${billingResult.debugMessage}")
+                scope.launch(Dispatchers.Main) {
+                    _billingUiEvent.value = BillingUiEvent.QueryFailed(
+                        billingResult.debugMessage.ifBlank {
+                            "Billing query failed (${billingResult.responseCode})"
+                        },
+                    )
+                }
             }
         }
     }
@@ -243,7 +275,14 @@ class BillingManager(
             return false
         }
 
-        val offerToken = productDetails.subscriptionOfferDetails?.firstOrNull()?.offerToken ?: ""
+        val offerToken = com.watermarkstudio.billing.SubscriptionDisplayHelper
+            .offerTokenForPurchase(productDetails)
+            .orEmpty()
+        if (offerToken.isEmpty()) {
+            Log.e(TAG, "No offer token for $productId")
+            reportProductUnavailable(productId)
+            return false
+        }
         val productDetailsParamsList = listOf(
             BillingFlowParams.ProductDetailsParams.newBuilder()
                 .setProductDetails(productDetails)
