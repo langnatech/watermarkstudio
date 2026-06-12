@@ -51,13 +51,15 @@ fun validateReleaseSigning(signingConfig: com.android.build.api.dsl.ApkSigningCo
 android {
   namespace = "com.watermarkstudio"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
+  // NDK r28+ builds 64-bit .so with 16 KB page alignment (Google Play requirement).
+  ndkVersion = "28.0.13004108"
 
   defaultConfig {
     applicationId = "com.watermarkstudio"
     minSdk = 24
     targetSdk = 36
-    versionCode = 18
-    versionName = "1.1.0"
+    versionCode = 20
+    versionName = "1.1.2"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -68,7 +70,11 @@ android {
     externalNativeBuild {
       cmake {
         cppFlags += "-std=c++17"
-        arguments += listOf("-DANDROID_STL=c++_shared")
+        arguments +=
+          listOf(
+            "-DANDROID_STL=c++_shared",
+            "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
+          )
       }
     }
   }

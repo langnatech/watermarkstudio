@@ -21,6 +21,7 @@ extern "C" {
  */
 void applyTemporalMedianRgba(
     uint8_t* frames,
+    const uint8_t* mask,
     int nFrames,
     int frameWidth,
     int frameHeight,
@@ -30,7 +31,7 @@ void applyTemporalMedianRgba(
     int roiWidth,
     int roiHeight
 ) {
-    if (frames == nullptr || nFrames <= 0 || roiWidth <= 0 || roiHeight <= 0) return;
+    if (frames == nullptr || mask == nullptr || nFrames <= 0 || roiWidth <= 0 || roiHeight <= 0) return;
 
     const int roiRight = roiLeft + roiWidth;
     const int roiBottom = roiTop + roiHeight;
@@ -44,6 +45,7 @@ void applyTemporalMedianRgba(
 
     for (int y = roiTop; y < roiBottom; ++y) {
         for (int x = roiLeft; x < roiRight; ++x) {
+            if (mask[y * frameWidth + x] == 0) continue;
             rSamples.clear();
             gSamples.clear();
             bSamples.clear();

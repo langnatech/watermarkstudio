@@ -43,8 +43,15 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) {
         viewModel.checkPremium(context)
+        viewModel.refreshProcessedLibrary(context)
         if (viewModel.consumePendingLibraryTab()) {
             currentTab = 1
+        }
+    }
+
+    LaunchedEffect(currentTab) {
+        if (currentTab == 1) {
+            viewModel.refreshProcessedLibrary(context)
         }
     }
 

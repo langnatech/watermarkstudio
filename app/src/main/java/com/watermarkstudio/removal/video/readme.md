@@ -1,5 +1,15 @@
 # 视频去水印 · 帧源 / 编码稳定性
 
+## 修复语义
+
+视频去水印不再使用整块矩形 ROI 作为修复区域。编辑器会把用户笔刷记录为
+`WatermarkConfig.removalStrokes`（半径 `brushRadiusPct`，按媒体宽度百分比），
+`MaskGenerator` 按当前帧分辨率栅格化为 8-bit mask：
+
+- 流式/批处理视频路径跳过光流与中值，直接对 mask 像素做 PatchMatch（静态水印场景更快、更稳）；
+- `FrameInpaintBlender` 在整段视频处理期间缓存 mask，对同一 mask 调用 `PatchMatchInpainter`（`InpaintTarget.VIDEO` 使用更少迭代）；
+- ROI 仅作为性能裁剪包围盒，不代表整块区域都会被覆盖。
+
 ## 问题
 
 三星 Exynos 上 `MediaMetadataRetriever.getFrameAtTime` 与自建 `MediaCodec`+`ImageReader` 会走 `c2.exynos.h264.*`，在 Java 捕获前 **SIGSEGV**。

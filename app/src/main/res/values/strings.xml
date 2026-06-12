@@ -25,9 +25,13 @@
     <string name="choose_media_to_remove_stamp">Choose Media to Remove Stamp</string>
     <string name="home_open_remove_studio">Open remove watermark studio</string>
     <string name="home_open_remove_subtitle">Video removal keeps audio; free 15s at up to 60fps, Pro 5min at source fps; shared daily export quota</string>
-    <string name="editor_remove_controls_header">REMOVAL REGION</string>
+    <string name="editor_remove_controls_header">REMOVAL BRUSH</string>
     <string name="remove_region_size_format">Region size (%1$.1fx)</string>
-    <string name="editor_remove_drag_scale_hint">Drag the green box on the preview to move it; use the slider above to resize the removal region.</string>
+    <string name="remove_brush_size_format">Brush radius (%1$.1f%%)</string>
+    <string name="editor_remove_drag_scale_hint">Paint over the watermark in the preview; use the slider above to resize the brush.</string>
+    <string name="editor_remove_brush_hint">Paint directly over the watermark strokes in the preview. Only painted pixels are repaired.</string>
+    <string name="remove_brush_undo">Undo stroke</string>
+    <string name="remove_brush_clear">Clear mask</string>
     <string name="editor_viewfinder_badge">PREVIEW %1$d / %2$d</string>
     <string name="remove_free_exports_badge">Free · %1$d exports left today</string>
     <string name="uhd_format_support_desc">Supports batches of UHD videos, stamps &amp; watermark configurations</string>
@@ -75,6 +79,7 @@
     <string name="export_status_failed_desc">Could not process the selected media. Check the format and try again.</string>
     <string name="export_error_no_media">Please select at least one photo or video.</string>
     <string name="export_error_no_config">No watermark or removal region configured.</string>
+    <string name="export_error_no_removal_strokes">Paint over the watermark before exporting.</string>
     <string name="export_error_item_failed">Failed to process: %1$s</string>
     <string name="export_error_unknown">Export failed: %1$s</string>
     <string name="export_error_unknown_fallback">Unknown error</string>
@@ -143,7 +148,7 @@
     <string name="privilege_video_limits_title">5-Minute PRO Video Exports</string>
     <string name="privilege_video_limits_desc">Unlock long video processing up to 5 minutes at ultra fast speed (Free is capped at 15s).</string>
     <string name="privilege_region_removal_title">Regional stamp removal</string>
-    <string name="privilege_region_removal_desc">Standard: TELEA inpaint (images) and temporal median recovery (videos, no audio). Pro: NS inpaint + seamless blend; optical-flow video recovery with original audio kept. Higher resolution.</string>
+    <string name="privilege_region_removal_desc">Paint a precise brush mask over the watermark. Standard uses local PatchMatch repair; Pro runs more iterations and optical-flow video recovery with original audio kept.</string>
     <string name="editor_remove_region_hint">Align the green region over the stamp, then export. Preview shows the repair on the current frame. Free: up to 15s at source fps (max 60fps). Pro: up to 5 min at full source fps (never lowered for length; longer clips take more time). Both keep audio. Results depend on motion and background.</string>
     <string name="error_remove_video_not_supported">Video removal is not available on this device (emulator, low memory, or missing encoder). Try on a physical phone or use image removal.</string>
     <string name="watermark_layers_title">Watermark layers</string>

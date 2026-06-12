@@ -3,7 +3,9 @@ package com.watermarkstudio
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.watermarkstudio.model.WatermarkType
+import com.watermarkstudio.util.ProcessedMediaLibrary
 import com.watermarkstudio.viewmodel.WatermarkViewModel
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -52,9 +54,14 @@ class FreeExportQuotaTest {
     }
 
     @Test
-    fun resetEditorSession_clearsProcessedUris() {
+    fun resetEditorSession_keepsProcessedLibraryUris() {
+        val file = File(context.cacheDir, "wm_test.jpg")
+        file.writeBytes(byteArrayOf(0xFF.toByte(), 0xD8.toByte()))
+        val uri = android.net.Uri.fromFile(file)
+        ProcessedMediaLibrary.replaceAll(context, listOf(uri))
+        viewModel.refreshProcessedLibrary(context)
         viewModel.resetEditorSession(WatermarkType.TEXT)
-        assertTrue(viewModel.uiState.value.processedMediaUris.isEmpty())
+        assertEquals(listOf(uri), viewModel.uiState.value.processedMediaUris)
         assertEquals(0L, viewModel.uiState.value.exportSuccessBatchId)
     }
 }

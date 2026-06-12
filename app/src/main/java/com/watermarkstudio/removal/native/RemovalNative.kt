@@ -37,6 +37,7 @@ object RemovalNative {
 
     fun applyTemporalMedian(
         framesRgba: ByteArray,
+        mask: ByteArray,
         nFrames: Int,
         frameWidth: Int,
         frameHeight: Int,
@@ -49,6 +50,7 @@ object RemovalNative {
         check(ensureLoaded()) { "removal_native is not loaded on this device" }
         nativeApplyTemporalMedian(
             framesRgba,
+            mask,
             nFrames,
             frameWidth,
             frameHeight,
@@ -60,10 +62,32 @@ object RemovalNative {
         )
     }
 
+    fun patchMatchInpaint(
+        imageRgba: ByteArray,
+        mask: ByteArray,
+        width: Int,
+        height: Int,
+        patchSize: Int,
+        emIterations: Int,
+        pmIterations: Int,
+    ) {
+        check(ensureLoaded()) { "removal_native is not loaded on this device" }
+        nativePatchMatchInpaint(
+            imageRgba,
+            mask,
+            width,
+            height,
+            patchSize,
+            emIterations,
+            pmIterations,
+        )
+    }
+
     private external fun nativePing(): Int
 
     private external fun nativeApplyTemporalMedian(
         framesRgba: ByteArray,
+        mask: ByteArray,
         nFrames: Int,
         frameWidth: Int,
         frameHeight: Int,
@@ -72,5 +96,15 @@ object RemovalNative {
         roiTop: Int,
         roiWidth: Int,
         roiHeight: Int,
+    )
+
+    private external fun nativePatchMatchInpaint(
+        imageRgba: ByteArray,
+        mask: ByteArray,
+        width: Int,
+        height: Int,
+        patchSize: Int,
+        emIterations: Int,
+        pmIterations: Int,
     )
 }

@@ -40,6 +40,7 @@ object OpticalFlowRecoveryProcessor {
         val nextAligned = next?.let { VideoFrameUtils.ensureDimensions(it, width, height) }
         try {
             val region = MaskGenerator.regionForConfig(width, height, config)
+            val maskBytes = createMaskBytes(width, height, config)
             val currMat = VideoFrameUtils.bitmapToBgrMat(current)
             val currGray = Mat()
             Imgproc.cvtColor(currMat, currGray, Imgproc.COLOR_BGR2GRAY)
@@ -77,7 +78,7 @@ object OpticalFlowRecoveryProcessor {
                     validPixels += r.second
                 }
             }
-            applyRoiAccumulators(outMat, region, accumulators, validPixels)
+            applyRoiAccumulators(outMat, region, maskBytes, width, accumulators, validPixels)
             currGray.release()
             if (failures > 0 && accumulators.isEmpty()) {
                 currMat.release()
@@ -99,6 +100,8 @@ object OpticalFlowRecoveryProcessor {
     private fun applyRoiAccumulators(
         outMat: Mat,
         region: com.watermarkstudio.util.RemovalRegion,
+        maskBytes: ByteArray,
+        frameWidth: Int,
         accumulators: List<DoubleArray>,
         validPixels: Int,
     ) {
@@ -106,6 +109,10 @@ object OpticalFlowRecoveryProcessor {
         var idx = 0
         for (y in region.top until region.bottom) {
             for (x in region.left until region.right) {
+                if (maskBytes[y * frameWidth + x].toInt() == 0) {
+                    idx++
+                    continue
+                }
                 var b = 0.0
                 var g = 0.0
                 var r = 0.0
@@ -144,6 +151,7 @@ object OpticalFlowRecoveryProcessor {
                 aligned
             }
         val region = MaskGenerator.regionForConfig(width, height, config)
+        val maskBytes = createMaskBytes(width, height, config)
         val mats = normalized.map { VideoFrameUtils.bitmapToBgrMat(it) }
         val grays =
             mats.map { m ->
@@ -172,7 +180,7 @@ object OpticalFlowRecoveryProcessor {
             }
             val outMat = mats[i].clone()
             if (accumulators.isNotEmpty() && validPixels > 0) {
-                applyRoiAccumulators(outMat, region, accumulators, validPixels)
+                applyRoiAccumulators(outMat, region, maskBytes, width, accumulators, validPixels)
             } else {
                 flowFailures++
             }
@@ -272,6 +280,15 @@ object OpticalFlowRecoveryProcessor {
             null
         } finally {
             flow.release()
+        }
+    }
+
+    private fun createMaskBytes(width: Int, height: Int, config: WatermarkConfig): ByteArray {
+        val mask = MaskGenerator.createMaskMat(width, height, config)
+        return try {
+            ByteArray(width * height).also { mask.get(0, 0, it) }
+        } finally {
+            mask.release()
         }
     }
 }

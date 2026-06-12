@@ -13,6 +13,9 @@ import java.io.File
  */
 object MediaStoreSaveHelper {
 
+    private const val PICTURES_RELATIVE_PATH = "Pictures/WatermarkStudio"
+    private const val MOVIES_RELATIVE_PATH = "Movies/WatermarkStudio"
+
     fun saveJpegBitmap(context: Context, bitmap: Bitmap, displayName: String): Uri? {
         val collection =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -26,6 +29,7 @@ object MediaStoreSaveHelper {
                 put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     put(MediaStore.Images.Media.IS_PENDING, 1)
+                    put(MediaStore.Images.Media.RELATIVE_PATH, PICTURES_RELATIVE_PATH)
                 }
             }
         val uri = context.contentResolver.insert(collection, values) ?: return null
@@ -56,6 +60,7 @@ object MediaStoreSaveHelper {
                 put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     put(MediaStore.Video.Media.IS_PENDING, 1)
+                    put(MediaStore.Video.Media.RELATIVE_PATH, MOVIES_RELATIVE_PATH)
                 }
             }
         val uri = context.contentResolver.insert(collection, values) ?: return null

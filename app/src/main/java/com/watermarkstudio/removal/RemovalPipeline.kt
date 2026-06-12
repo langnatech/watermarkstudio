@@ -21,6 +21,7 @@ object RemovalPipeline {
         isPremium: Boolean,
         progress: RemovalProgress? = null,
     ): Uri? = withContext(Dispatchers.IO) {
+        if (!RemovalInputValidator.hasPaintedMask(config)) return@withContext null
         val quality = RemovalQualityResolver.resolve(isPremium, context)
         val maxDim = if (isPremium) 2500 else 1024
         when (item.type) {

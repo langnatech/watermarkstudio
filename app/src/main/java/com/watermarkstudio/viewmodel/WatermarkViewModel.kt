@@ -13,6 +13,8 @@ import com.watermarkstudio.model.MediaItem
 import com.watermarkstudio.model.MediaType
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.model.WatermarkType
+import com.watermarkstudio.removal.RemovalInputValidator
+import com.watermarkstudio.util.ProcessedMediaLibrary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -219,9 +221,7 @@ class WatermarkViewModel : ViewModel() {
                 WatermarkConfig(
                     type = WatermarkType.REMOVE,
                     opacity = 1f,
-                    x = 50f,
-                    y = 50f,
-                    scale = 1.2f,
+                    brushRadiusPct = WatermarkConfig.DEFAULT_BRUSH_RADIUS_PCT,
                 )
             } else {
                 WatermarkConfig(WatermarkType.TEXT, text = "")
@@ -233,7 +233,6 @@ class WatermarkViewModel : ViewModel() {
             processingProgress = 0f,
             errorMessage = null,
             maxVideoDurationSec = 15,
-            processedMediaUris = emptyList(),
             exportSuccessBatchId = 0L,
             exportStatus = ExportStatus.IDLE,
             exportStatusMessage = null,
@@ -264,6 +263,12 @@ class WatermarkViewModel : ViewModel() {
         val pending = pendingLibraryTab
         pendingLibraryTab = false
         return pending
+    }
+
+    /** Loads persisted export URIs (survives app restart). Call from Home / after export. */
+    fun refreshProcessedLibrary(context: Context) {
+        val uris = ProcessedMediaLibrary.load(context)
+        _uiState.value = _uiState.value.copy(processedMediaUris = uris)
     }
 
     private fun resolveMediaType(context: Context, uri: Uri): MediaType {
@@ -433,6 +438,17 @@ class WatermarkViewModel : ViewModel() {
             }
             val removeOnly = configs.all { it.type == WatermarkType.REMOVE }
             val removeConfig = configs.firstOrNull { it.type == WatermarkType.REMOVE }
+            if (removeOnly && removeConfig != null && !RemovalInputValidator.hasPaintedMask(removeConfig)) {
+                val message = context.getString(R.string.export_error_no_removal_strokes)
+                _uiState.value =
+                    _uiState.value.copy(
+                        isProcessing = false,
+                        exportStatus = ExportStatus.FAILED,
+                        exportStatusMessage = message,
+                        errorMessage = message,
+                    )
+                return@launch
+            }
             val exportConfigs = watermarkConfigsForExport(configs)
             val ignoredRemoveLayers = !removeOnly && exportConfigs.size < configs.size
 
@@ -571,11 +587,18 @@ class WatermarkViewModel : ViewModel() {
                         0L
                     }
 
+                val libraryUris =
+                    if (processed.isNotEmpty()) {
+                        setPendingLibraryTab(true)
+                        ProcessedMediaLibrary.append(context, processed)
+                    } else {
+                        _uiState.value.processedMediaUris
+                    }
                 _uiState.value =
                     _uiState.value.copy(
                         isProcessing = false,
                         processingProgress = 1f,
-                        processedMediaUris = (_uiState.value.processedMediaUris + processed).takeLast(20),
+                        processedMediaUris = libraryUris,
                         errorMessage = errorMessage,
                         exportSuccessBatchId = successBatchId,
                         exportStatus = exportStatus,

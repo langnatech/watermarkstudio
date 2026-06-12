@@ -17,10 +17,14 @@
     <string name="choose_media_to_remove_stamp">选择需要消除图章的媒体</string>
     <string name="home_open_remove_studio">进入去水印工作台</string>
     <string name="home_open_remove_subtitle">视频去水印保留原声；免费 15 秒最高 60fps，Pro 5 分钟保持源帧率；共用每日导出额度</string>
-    <string name="editor_remove_region_hint">将绿色区域对准图章后导出；预览为当前帧修复效果。免费：最长 15 秒、源帧率（最高 60fps）。Pro：最长 5 分钟、全程保持源帧率（不因时长降帧，仅处理更久）。均保留原声。效果取决于运动与背景。</string>
-    <string name="editor_remove_controls_header">消除区域</string>
+    <string name="editor_remove_region_hint">用笔刷直接涂抹需要消除的水印笔画后导出；预览为当前帧修复效果。免费：最长 15 秒、源帧率（最高 60fps）。Pro：最长 5 分钟、全程保持源帧率（不因时长降帧，仅处理更久）。均保留原声。效果取决于运动与背景。</string>
+    <string name="editor_remove_controls_header">消除笔刷</string>
     <string name="remove_region_size_format">消除区域大小 (%1$.1fx)</string>
-    <string name="editor_remove_drag_scale_hint">在上方预览中拖动绿色框调整位置；使用滑块调整区域大小。</string>
+    <string name="remove_brush_size_format">笔刷半径 (%1$.1f%%)</string>
+    <string name="editor_remove_drag_scale_hint">在预览图上涂抹水印；使用上方滑块调整笔刷大小。</string>
+    <string name="editor_remove_brush_hint">在预览图上直接涂抹水印笔画。只有涂抹到的像素会被修复。</string>
+    <string name="remove_brush_undo">撤销上一笔</string>
+    <string name="remove_brush_clear">清空涂抹</string>
     <string name="editor_viewfinder_badge">预览 %1$d / %2$d</string>
     <string name="remove_free_exports_badge">免费 · 今日剩余 %1$d 次</string>
     <string name="uhd_format_support_desc">支持批量超清视频、个性图章以及高级水印参数设置</string>
@@ -68,6 +72,7 @@
     <string name="export_status_failed_desc">无法处理所选媒体，请检查格式后重试。</string>
     <string name="export_error_no_media">请至少选择一张图片或一个视频。</string>
     <string name="export_error_no_config">未配置水印或消除区域。</string>
+    <string name="export_error_no_removal_strokes">请先在预览图上涂抹需要消除的水印。</string>
     <string name="export_error_item_failed">处理失败：%1$s</string>
     <string name="export_error_unknown">导出失败：%1$s</string>
     <string name="export_error_unknown_fallback">未知错误</string>
@@ -136,7 +141,7 @@
     <string name="privilege_video_limits_title">5分钟 PRO 长视频转换</string>
     <string name="privilege_video_limits_desc">支持单次处理长达 5分钟的专业视频，极速导出不卡顿（免费版限制在前 15秒短片）。</string>
     <string name="privilege_region_removal_title">区域图章消除</string>
-    <string name="privilege_region_removal_desc">标准版：图片 TELEA 修复、视频时序中值（无原声）。Pro：NS 修复 + 无缝融合、光流视频恢复并保留原音轨；更高分辨率。</string>
+    <string name="privilege_region_removal_desc">用笔刷精确涂抹水印区域。标准版本地 PatchMatch 修复；Pro 使用更多迭代并加入光流视频恢复，同时保留原音轨。</string>
     <string name="error_remove_video_not_supported">当前设备无法处理视频去水印（模拟器、低内存或缺少编码器）。请在真机上重试或仅处理图片。</string>
     <string name="watermark_layers_title">水印图层</string>
     <string name="layer_type_text">文字</string>

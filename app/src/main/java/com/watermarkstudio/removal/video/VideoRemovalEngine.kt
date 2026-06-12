@@ -5,6 +5,7 @@ import android.net.Uri
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.removal.OpenCvBootstrap
 import com.watermarkstudio.removal.RemovalCapability
+import com.watermarkstudio.removal.RemovalInputValidator
 import com.watermarkstudio.removal.RemovalProgress
 import com.watermarkstudio.removal.RemovalQuality
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -63,6 +64,7 @@ object VideoRemovalEngine {
         quality: RemovalQuality,
         progress: RemovalProgress?,
     ): Uri? {
+        if (!RemovalInputValidator.hasPaintedMask(config)) return null
         if (!OpenCvBootstrap.ensureLoaded(context)) return null
         if (!RemovalCapability.supportsVideoRemoval(context)) return null
         if (
@@ -191,9 +193,15 @@ object VideoRemovalEngine {
                 )
             } ?: return null
 
-        val recovered =
-            OpticalFlowRecoveryProcessor.recover(decoded.bitmaps, config, useOpticalFlow = true)
-        val blended = recovered.map { FrameInpaintBlender.blendFrame(it, config, quality) }
+        val maskCache = FrameInpaintBlender.prepareMask(decoded.width, decoded.height, config)
+        val blended =
+            try {
+                decoded.bitmaps.map { frame ->
+                    FrameInpaintBlender.blendFrame(frame, config, quality, maskCache)
+                }
+            } finally {
+                maskCache.release()
+            }
         val videoDurationUs = VideoRemovalLimits.videoDurationUs(blended.size, decoded.fps)
         val tempFile = File(context.cacheDir, "remove_${System.currentTimeMillis()}.mp4")
         val silentFile = File(context.cacheDir, "remove_silent_${System.currentTimeMillis()}.mp4")

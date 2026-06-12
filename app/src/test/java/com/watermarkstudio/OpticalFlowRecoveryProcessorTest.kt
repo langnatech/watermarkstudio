@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import com.watermarkstudio.model.RemovalStroke
+import com.watermarkstudio.model.RemovalStrokePoint
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.model.WatermarkType
 import com.watermarkstudio.removal.video.OpticalFlowRecoveryProcessor
@@ -26,9 +28,17 @@ class OpticalFlowRecoveryProcessorTest {
         removeConfig =
             WatermarkConfig(
                 type = WatermarkType.REMOVE,
-                x = 50f,
-                y = 50f,
-                scale = 1f,
+                removalStrokes =
+                    listOf(
+                        RemovalStroke(
+                            points =
+                                listOf(
+                                    RemovalStrokePoint(45f, 45f),
+                                    RemovalStrokePoint(55f, 55f),
+                                ),
+                            radiusPct = WatermarkConfig.DEFAULT_BRUSH_RADIUS_PCT,
+                        ),
+                    ),
             )
         try {
             System.loadLibrary("opencv_java4")

@@ -6,14 +6,12 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.removal.OpenCvBootstrap
+import com.watermarkstudio.removal.PatchMatchInpainter
 import com.watermarkstudio.removal.RemovalQuality
+import com.watermarkstudio.removal.mask.MaskGenerator
 import com.watermarkstudio.removal.video.VideoFrameExtractor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.opencv.android.Utils
-import org.opencv.core.Mat
-import org.opencv.imgproc.Imgproc
-import org.opencv.photo.Photo
 
 /**
  * Low-resolution inpaint preview for the remove-region overlay (images + video first frame).
@@ -21,7 +19,7 @@ import org.opencv.photo.Photo
 object RemovalPreviewHelper {
 
     private const val PREVIEW_MAX_DIM = 480
-    private const val INPAINT_RADIUS = 5.0
+    const val PREVIEW_INPAINT_DEBOUNCE_MS = 400L
 
     suspend fun renderPreview(
         context: Context,
@@ -72,55 +70,18 @@ object RemovalPreviewHelper {
         config: WatermarkConfig,
         isPremium: Boolean,
     ): Bitmap? {
+        if (config.removalStrokes.isEmpty()) {
+            return bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        }
         val quality = if (isPremium) RemovalQuality.ADVANCED else RemovalQuality.STANDARD
-        val src = Mat()
-        val dst = Mat()
-        val mask = com.watermarkstudio.removal.mask.MaskGenerator.createMaskMat(bitmap.width, bitmap.height, config)
+        val mask = MaskGenerator.createMaskMat(bitmap.width, bitmap.height, config)
+        val region = MaskGenerator.regionForConfig(bitmap.width, bitmap.height, config)
         var result: Bitmap? = null
         try {
-            Utils.bitmapToMat(bitmap, src)
-            if (src.channels() == 4) {
-                Imgproc.cvtColor(src, src, Imgproc.COLOR_RGBA2BGR)
-            }
-            when (quality) {
-                RemovalQuality.STANDARD -> {
-                    Photo.inpaint(src, mask, dst, INPAINT_RADIUS, Photo.INPAINT_TELEA)
-                }
-                RemovalQuality.ADVANCED -> {
-                    val tmp = Mat()
-                    val feather =
-                        com.watermarkstudio.removal.mask.MaskGenerator.createFeatheredMaskMat(
-                            bitmap.width,
-                            bitmap.height,
-                            config,
-                        )
-                    try {
-                        Photo.inpaint(src, mask, tmp, INPAINT_RADIUS, Photo.INPAINT_NS)
-                        com.watermarkstudio.removal.SeamlessBlendHelper.seamlessCloneInpaint(
-                            src,
-                            tmp,
-                            feather,
-                            bitmap.width,
-                            bitmap.height,
-                            config,
-                            dst,
-                        )
-                    } finally {
-                        tmp.release()
-                        feather.release()
-                    }
-                }
-            }
-            if (dst.channels() == 3) {
-                Imgproc.cvtColor(dst, dst, Imgproc.COLOR_BGR2RGBA)
-            }
-            val out = Bitmap.createBitmap(dst.cols(), dst.rows(), Bitmap.Config.ARGB_8888)
-            Utils.matToBitmap(dst, out)
+            val out = PatchMatchInpainter.inpaint(bitmap, mask, region, quality)
             if (bitmap !== out) bitmap.recycle()
             result = out
         } finally {
-            src.release()
-            dst.release()
             mask.release()
         }
         return result

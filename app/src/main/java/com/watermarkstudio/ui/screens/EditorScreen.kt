@@ -38,8 +38,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.foundation.layout.BoxWithConstraints
-import com.watermarkstudio.util.RemovalRegion
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -60,6 +58,8 @@ import com.watermarkstudio.model.WatermarkType
 import com.watermarkstudio.ui.components.watermarkDisplayText
 import com.watermarkstudio.ui.components.WatermarkOutlinedText
 import com.watermarkstudio.ui.components.DraggableWatermarkOverlay
+import com.watermarkstudio.ui.components.RemovalBrushOverlay
+import com.watermarkstudio.ui.components.loadMediaPreviewDimensions
 import com.watermarkstudio.ui.components.previewFontSizeSp
 import com.watermarkstudio.ui.components.InteractiveWatermarkPreview
 import com.watermarkstudio.viewmodel.WatermarkViewModel
@@ -378,7 +378,7 @@ fun EditorScreen(
                             }
                             if (activeWatermarkIndex >= 0) {
                                 val removeConfig = uiState.watermarkConfigs[activeWatermarkIndex]
-                                RemovalRegionControls(
+                                RemovalBrushControls(
                                     config = removeConfig,
                                     onUpdate = { updated ->
                                         viewModel.updateWatermark(activeWatermarkIndex, updated)
@@ -1196,8 +1196,19 @@ fun PreviewContainer(
     val removeConfig = configs.firstOrNull { it.type == WatermarkType.REMOVE }
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var previewLoading by remember { mutableStateOf(false) }
+    var mediaWidthPx by remember(item.uri) { mutableStateOf<Float?>(null) }
+    var mediaHeightPx by remember(item.uri) { mutableStateOf<Float?>(null) }
 
-    LaunchedEffect(item.uri, item.type, removeConfig?.x, removeConfig?.y, removeConfig?.scale, isPremium) {
+    LaunchedEffect(item.uri, item.type) {
+        val dims = loadMediaPreviewDimensions(context, item.uri, item.type)
+        mediaWidthPx = dims?.widthPx
+        mediaHeightPx = dims?.heightPx
+    }
+
+    LaunchedEffect(item.uri, item.type, removeConfig?.removalStrokes, isPremium) {
+        if (!removeConfig?.removalStrokes.isNullOrEmpty()) {
+            delay(RemovalPreviewHelper.PREVIEW_INPAINT_DEBOUNCE_MS)
+        }
         previewBitmap?.recycle()
         previewBitmap = null
         previewLoading = true
@@ -1252,18 +1263,35 @@ fun PreviewContainer(
         if (onActiveConfigUpdate != null && activeConfigIndex in configs.indices) {
             configs.forEachIndexed { index, config ->
                 val isActive = index == activeConfigIndex
-                DraggableWatermarkOverlay(
-                    mediaUri = item.uri,
-                    mediaType = item.type,
-                    config = config,
-                    isActiveLayer = isActive,
-                    onConfigUpdate = { updated ->
-                        if (isActive) {
-                            onActiveConfigUpdate(updated)
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
+                if (config.type == WatermarkType.REMOVE) {
+                    RemovalBrushOverlay(
+                        config = config,
+                        previewBitmap = previewBitmap,
+                        mediaWidthPx = mediaWidthPx,
+                        mediaHeightPx = mediaHeightPx,
+                        brushEnabled = !previewLoading && mediaWidthPx != null && mediaHeightPx != null,
+                        isActiveLayer = isActive,
+                        onConfigUpdate = { updated ->
+                            if (isActive) {
+                                onActiveConfigUpdate(updated)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    DraggableWatermarkOverlay(
+                        mediaUri = item.uri,
+                        mediaType = item.type,
+                        config = config,
+                        isActiveLayer = isActive,
+                        onConfigUpdate = { updated ->
+                            if (isActive) {
+                                onActiveConfigUpdate(updated)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         } else if (removeConfig == null || item.type != MediaType.IMAGE) {
             configs.forEach { config ->
@@ -1277,6 +1305,19 @@ fun PreviewContainer(
 
 @Composable
 fun WatermarkOverlay(config: WatermarkConfig) {
+    if (config.type == WatermarkType.REMOVE) {
+        RemovalBrushOverlay(
+            config = config,
+            previewBitmap = null,
+            mediaWidthPx = null,
+            mediaHeightPx = null,
+            brushEnabled = false,
+            isActiveLayer = false,
+            onConfigUpdate = {},
+            modifier = Modifier.fillMaxSize(),
+        )
+        return
+    }
     val horizontalBias = (config.x / 100f) * 2f - 1f
     val verticalBias = (config.y / 100f) * 2f - 1f
 
@@ -1310,26 +1351,7 @@ fun WatermarkOverlay(config: WatermarkConfig) {
                         modifier = Modifier.size((100 * config.scale).dp)
                     )
                 }
-                WatermarkType.REMOVE -> {
-                    BoxWithConstraints {
-                        val boxW = maxWidth * RemovalRegion.WIDTH_RATIO * config.scale
-                        val boxH = maxHeight * RemovalRegion.HEIGHT_RATIO * config.scale
-                        Box(
-                            modifier = Modifier
-                                .size(boxW, boxH)
-                                .border(2.dp, Color(0xFF10B981), RoundedCornerShape(8.dp))
-                                .background(Color(0xFF10B981).copy(alpha = 0.25f)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                stringResource(R.string.layer_type_remove),
-                                color = Color.White,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
-                }
+                WatermarkType.REMOVE -> Unit
             }
         }
     }
@@ -1346,20 +1368,20 @@ private val watermarkTextColorPresets =
     )
 
 @Composable
-fun RemovalRegionControls(config: WatermarkConfig, onUpdate: (WatermarkConfig) -> Unit) {
+fun RemovalBrushControls(config: WatermarkConfig, onUpdate: (WatermarkConfig) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
             Text(
-                stringResource(R.string.remove_region_size_format, config.scale),
+                stringResource(R.string.remove_brush_size_format, config.brushRadiusPct),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF10B981),
             )
         }
         Slider(
-            value = config.scale,
-            onValueChange = { onUpdate(config.copy(scale = it)) },
-            valueRange = 0.3f..3f,
+            value = config.brushRadiusPct,
+            onValueChange = { onUpdate(config.copy(brushRadiusPct = it)) },
+            valueRange = WatermarkConfig.MIN_BRUSH_RADIUS_PCT..WatermarkConfig.MAX_BRUSH_RADIUS_PCT,
             colors =
                 SliderDefaults.colors(
                     thumbColor = Color.White,
@@ -1368,20 +1390,35 @@ fun RemovalRegionControls(config: WatermarkConfig, onUpdate: (WatermarkConfig) -
                 ),
         )
         Text(
-            stringResource(R.string.editor_remove_drag_scale_hint),
+            stringResource(R.string.editor_remove_brush_hint),
             color = Color(0xFF64748B),
             fontSize = 11.sp,
             lineHeight = 16.sp,
         )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = {
+                    onUpdate(config.copy(removalStrokes = config.removalStrokes.dropLast(1)))
+                },
+                enabled = config.removalStrokes.isNotEmpty(),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.remove_brush_undo))
+            }
+            OutlinedButton(
+                onClick = { onUpdate(config.copy(removalStrokes = emptyList())) },
+                enabled = config.removalStrokes.isNotEmpty(),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.remove_brush_clear))
+            }
+        }
     }
 }
 
 @Composable
 fun WatermarkConfigTools(config: WatermarkConfig, onUpdate: (WatermarkConfig) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (config.type == WatermarkType.REMOVE) {
-            return@Column
-        }
         if (config.type == WatermarkType.TEXT) {
             Text(
                 stringResource(R.string.text_style_lbl),

@@ -3,9 +3,9 @@ package com.watermarkstudio.removal
 import android.content.Context
 
 enum class RemovalQuality {
-    /** TELEA inpaint; video: optical-flow ROI + TELEA per frame + source audio mux. */
+    /** Brush mask + PatchMatch with conservative iterations; video keeps source audio. */
     STANDARD,
-    /** NS inpaint + seamlessClone; video: pyramid LK flow + NS/seamless per frame + source audio mux. */
+    /** Brush mask + PatchMatch with more iterations; video adds lightweight optical-flow recovery. */
     ADVANCED,
 }
 

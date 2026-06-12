@@ -21,6 +21,10 @@ object RoiWindowMedianProcessor {
         val height = current.height
         val region = MaskGenerator.regionForConfig(width, height, config)
         if (region.width <= 0 || region.height <= 0) return current
+        val mask = MaskGenerator.createMaskMat(width, height, config)
+        val maskBytes = ByteArray(width * height)
+        mask.get(0, 0, maskBytes)
+        mask.release()
 
         val out = current.copy(Bitmap.Config.ARGB_8888, true)
         val roiPixels = Array(window.size) { IntArray(region.width * region.height) }
@@ -35,13 +39,15 @@ object RoiWindowMedianProcessor {
         var idx = 0
         for (y in region.top until region.bottom) {
             for (x in region.left until region.right) {
-                val rs = (0 until window.size).map { (roiPixels[it][idx] shr 16) and 0xFF }.sorted()
-                val gs = (0 until window.size).map { (roiPixels[it][idx] shr 8) and 0xFF }.sorted()
-                val bs = (0 until window.size).map { roiPixels[it][idx] and 0xFF }.sorted()
-                val mid = window.size / 2
-                val a = (current.getPixel(x, y) shr 24) and 0xFF
-                val color = (a shl 24) or (rs[mid] shl 16) or (gs[mid] shl 8) or bs[mid]
-                out.setPixel(x, y, color)
+                if (maskBytes[y * width + x].toInt() != 0) {
+                    val rs = (0 until window.size).map { (roiPixels[it][idx] shr 16) and 0xFF }.sorted()
+                    val gs = (0 until window.size).map { (roiPixels[it][idx] shr 8) and 0xFF }.sorted()
+                    val bs = (0 until window.size).map { roiPixels[it][idx] and 0xFF }.sorted()
+                    val mid = window.size / 2
+                    val a = (current.getPixel(x, y) shr 24) and 0xFF
+                    val color = (a shl 24) or (rs[mid] shl 16) or (gs[mid] shl 8) or bs[mid]
+                    out.setPixel(x, y, color)
+                }
                 idx++
             }
         }

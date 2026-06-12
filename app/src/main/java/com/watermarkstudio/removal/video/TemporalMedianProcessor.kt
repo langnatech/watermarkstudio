@@ -16,17 +16,22 @@ object TemporalMedianProcessor {
         val h = frames.first().height
         val region = MaskGenerator.regionForConfig(w, h, config)
         if (region.width <= 0 || region.height <= 0) return frames
+        val mask = MaskGenerator.createMaskMat(w, h, config)
+        val maskBytes = ByteArray(w * h)
+        mask.get(0, 0, maskBytes)
+        mask.release()
 
         return if (RemovalNative.ensureLoaded()) {
-            applyNative(frames, w, h, region)
+            applyNative(frames, maskBytes, w, h, region)
         } else {
             Log.w(TAG, "Using Kotlin temporal-median fallback (native library unavailable)")
-            applyKotlinTemporalMedian(frames, region)
+            applyKotlinTemporalMedian(frames, maskBytes, region, w)
         }
     }
 
     private fun applyNative(
         frames: List<Bitmap>,
+        maskBytes: ByteArray,
         w: Int,
         h: Int,
         region: RemovalRegion,
@@ -49,6 +54,7 @@ object TemporalMedianProcessor {
 
         RemovalNative.applyTemporalMedian(
             buffer,
+            maskBytes,
             n,
             w,
             h,
@@ -67,7 +73,9 @@ object TemporalMedianProcessor {
      */
     private fun applyKotlinTemporalMedian(
         frames: List<Bitmap>,
+        maskBytes: ByteArray,
         region: RemovalRegion,
+        frameWidth: Int,
     ): List<Bitmap> {
         val n = frames.size
         val roiPixels = region.width * region.height
@@ -86,6 +94,9 @@ object TemporalMedianProcessor {
         val gs = IntArray(n)
         val bs = IntArray(n)
         for (idx in 0 until roiPixels) {
+            val x = region.left + (idx % region.width)
+            val y = region.top + (idx / region.width)
+            if (maskBytes[y * frameWidth + x].toInt() == 0) continue
             for (fi in 0 until n) {
                 val c = stack[fi][idx]
                 rs[fi] = (c shr 16) and 0xFF
@@ -104,7 +115,10 @@ object TemporalMedianProcessor {
             var idx = 0
             for (y in region.top until region.bottom) {
                 for (x in region.left until region.right) {
-                    out.setPixel(x, y, medianArgb[idx++])
+                    if (maskBytes[y * frameWidth + x].toInt() != 0) {
+                        out.setPixel(x, y, medianArgb[idx])
+                    }
+                    idx++
                 }
             }
             original.recycle()

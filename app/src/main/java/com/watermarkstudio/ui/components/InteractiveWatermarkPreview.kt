@@ -33,7 +33,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
@@ -148,9 +147,6 @@ fun InteractiveWatermarkPreview(
                 val ch = mediaHeightPx ?: canvasHeightPx
                 WatermarkContentGeometry.fittedContentRect(canvasWidthPx, canvasHeightPx, cw, ch)
             }
-        val contentWidthDp = with(density) { contentRect.width.toDp() }
-        val contentHeightDp = with(density) { contentRect.height.toDp() }
-
         val hint = stringResource(R.string.hint_enter_watermark)
         val previewFontSize = config.previewFontSizeSp(contentRect.width)
         val textSizePx =
@@ -179,16 +175,8 @@ fun InteractiveWatermarkPreview(
                 textSizePx.second.toDp().coerceAtLeast(20.dp)
             }
         val (overlayW, overlayH) =
-            remember(config.type, config.scale, canvasW, canvasH, textOverlayW, textOverlayH, contentWidthDp, contentHeightDp) {
-                WatermarkDragGeometry.overlaySizeDp(
-                    config,
-                    canvasW,
-                    canvasH,
-                    textOverlayW,
-                    textOverlayH,
-                    contentWidthDp,
-                    contentHeightDp,
-                )
+            remember(config.type, config.scale, textOverlayW, textOverlayH) {
+                WatermarkDragGeometry.overlaySizeDp(config, textOverlayW, textOverlayH)
             }
         val overlayWidthPx = with(density) { overlayW.roundToPx().toFloat() }
         val overlayHeightPx = with(density) { overlayH.roundToPx().toFloat() }
@@ -322,9 +310,9 @@ private fun WatermarkOverlayChip(
 ) {
     val chipBackground =
         when (config.type) {
-            WatermarkType.REMOVE -> Color(0xFF10B981).copy(alpha = 0.25f)
             WatermarkType.TEXT -> Color.Transparent
-            else -> Color.Black.copy(alpha = 0.2f)
+            WatermarkType.IMAGE -> Color.Black.copy(alpha = 0.2f)
+            WatermarkType.REMOVE -> Color.Transparent
         }
     Box(
         modifier =
@@ -333,8 +321,8 @@ private fun WatermarkOverlayChip(
                     width = if (isActiveLayer) 2.dp else 1.dp,
                     color =
                         when (config.type) {
-                            WatermarkType.REMOVE -> Color(0xFF10B981)
-                            else -> Color(0xFF818CF8)
+                            WatermarkType.TEXT, WatermarkType.IMAGE -> Color(0xFF818CF8)
+                            WatermarkType.REMOVE -> Color.Transparent
                         },
                     shape = RoundedCornerShape(8.dp),
                 )
@@ -356,13 +344,7 @@ private fun WatermarkOverlayChip(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit,
                 )
-            WatermarkType.REMOVE ->
-                Text(
-                    text = stringResource(R.string.layer_type_remove),
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                )
+            WatermarkType.REMOVE -> Unit
         }
     }
 }

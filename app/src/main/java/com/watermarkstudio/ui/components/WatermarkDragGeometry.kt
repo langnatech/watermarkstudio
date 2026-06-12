@@ -4,11 +4,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.model.WatermarkType
-import com.watermarkstudio.util.RemovalRegion
 
 /**
  * Maps [WatermarkConfig] x/y (0–100 of **media content**) to overlay top-left on the preview canvas.
  * When [contentRect] is set (Fit letterboxing), coordinates align with export on full-resolution media.
+ *
+ * REMOVE layers use [RemovalBrushOverlay] instead; do not pass REMOVE configs here.
  */
 internal object WatermarkDragGeometry {
 
@@ -25,6 +26,7 @@ internal object WatermarkDragGeometry {
         overlayHeightPx: Float,
         contentRect: WatermarkContentGeometry.ContentRect? = null,
     ): PxOffset {
+        require(config.type != WatermarkType.REMOVE) { "REMOVE uses RemovalBrushOverlay" }
         if (canvasWidthPx <= 0f || canvasHeightPx <= 0f) {
             return PxOffset(0f, 0f)
         }
@@ -38,20 +40,13 @@ internal object WatermarkDragGeometry {
                     y = area.top + rangeY * (config.y / 100f),
                 )
             }
-            WatermarkType.REMOVE -> {
-                val cx = area.left + area.width * (config.x / 100f)
-                val cy = area.top + area.height * (config.y / 100f)
-                PxOffset(
-                    x = cx - overlayWidthPx / 2f,
-                    y = cy - overlayHeightPx / 2f,
-                )
-            }
             WatermarkType.TEXT -> {
                 PxOffset(
                     x = area.left + area.width * (config.x / 100f),
                     y = area.top + area.height * (config.y / 100f),
                 )
             }
+            WatermarkType.REMOVE -> error("unreachable")
         }
     }
 
@@ -64,6 +59,7 @@ internal object WatermarkDragGeometry {
         overlayHeightPx: Float,
         contentRect: WatermarkContentGeometry.ContentRect? = null,
     ): WatermarkConfig {
+        require(config.type != WatermarkType.REMOVE) { "REMOVE uses RemovalBrushOverlay" }
         val area = area(contentRect, canvasWidthPx, canvasHeightPx)
         val minX = area.left
         val minY = area.top
@@ -80,43 +76,29 @@ internal object WatermarkDragGeometry {
                     y = ((yPx - area.top) / rangeY * 100f).coerceIn(0f, 100f),
                 )
             }
-            WatermarkType.REMOVE -> {
-                val cx = xPx + overlayWidthPx / 2f
-                val cy = yPx + overlayHeightPx / 2f
-                config.copy(
-                    x = ((cx - area.left) / area.width * 100f).coerceIn(0f, 100f),
-                    y = ((cy - area.top) / area.height * 100f).coerceIn(0f, 100f),
-                )
-            }
             WatermarkType.TEXT -> {
                 config.copy(
                     x = ((xPx - area.left) / area.width * 100f).coerceIn(0f, 100f),
                     y = ((yPx - area.top) / area.height * 100f).coerceIn(0f, 100f),
                 )
             }
+            WatermarkType.REMOVE -> error("unreachable")
         }
     }
 
     fun overlaySizeDp(
         config: WatermarkConfig,
-        canvasW: Dp,
-        canvasH: Dp,
         textOverlayW: Dp,
         textOverlayH: Dp,
-        contentWidthDp: Dp? = null,
-        contentHeightDp: Dp? = null,
-    ): Pair<Dp, Dp> =
-        when (config.type) {
+    ): Pair<Dp, Dp> {
+        require(config.type != WatermarkType.REMOVE) { "REMOVE uses RemovalBrushOverlay" }
+        return when (config.type) {
             WatermarkType.TEXT -> textOverlayW to textOverlayH
             WatermarkType.IMAGE -> {
                 val side = (80f * config.scale).dp
                 side to side
             }
-            WatermarkType.REMOVE -> {
-                val w = contentWidthDp ?: canvasW
-                val h = contentHeightDp ?: canvasH
-                w * RemovalRegion.WIDTH_RATIO * config.scale to
-                    h * RemovalRegion.HEIGHT_RATIO * config.scale
-            }
+            WatermarkType.REMOVE -> error("unreachable")
         }
+    }
 }
