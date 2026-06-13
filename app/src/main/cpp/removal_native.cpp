@@ -13,7 +13,7 @@ extern "C" void applyTemporalMedianRgba(
     int roiWidth,
     int roiHeight);
 
-extern "C" void patchMatchInpaintRgba(
+extern "C" int patchMatchInpaintRgba(
     uint8_t* imageRgba,
     const uint8_t* mask,
     int width,
@@ -66,7 +66,7 @@ Java_com_watermarkstudio_removal_native_RemovalNative_nativeApplyTemporalMedian(
     env->ReleaseByteArrayElements(framesArray, frames, 0);
 }
 
-extern "C" JNIEXPORT void JNICALL
+extern "C" JNIEXPORT jint JNICALL
 Java_com_watermarkstudio_removal_native_RemovalNative_nativePatchMatchInpaint(
     JNIEnv* env,
     jobject,
@@ -78,15 +78,15 @@ Java_com_watermarkstudio_removal_native_RemovalNative_nativePatchMatchInpaint(
     jint emIterations,
     jint pmIterations
 ) {
-    if (imageArray == nullptr || maskArray == nullptr) return;
+    if (imageArray == nullptr || maskArray == nullptr) return 2;
     jbyte* image = env->GetByteArrayElements(imageArray, nullptr);
     jbyte* mask = env->GetByteArrayElements(maskArray, nullptr);
     if (image == nullptr || mask == nullptr) {
         if (image != nullptr) env->ReleaseByteArrayElements(imageArray, image, 0);
         if (mask != nullptr) env->ReleaseByteArrayElements(maskArray, mask, JNI_ABORT);
-        return;
+        return 2;
     }
-    patchMatchInpaintRgba(
+    const int result = patchMatchInpaintRgba(
         reinterpret_cast<uint8_t*>(image),
         reinterpret_cast<const uint8_t*>(mask),
         width,
@@ -97,4 +97,5 @@ Java_com_watermarkstudio_removal_native_RemovalNative_nativePatchMatchInpaint(
     );
     env->ReleaseByteArrayElements(maskArray, mask, JNI_ABORT);
     env->ReleaseByteArrayElements(imageArray, image, 0);
+    return result;
 }

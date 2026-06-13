@@ -17,8 +17,6 @@ object MaskGenerator {
 
     private const val MASK_THRESHOLD = 128.0
     private const val MASK_DILATE_PX = 3
-    private const val MIN_STROKE_RADIUS_PX = 2f
-
     /** 8-bit single-channel mask for OpenCV inpaint (255 = repair region). */
     fun createMaskMat(width: Int, height: Int, config: WatermarkConfig): Mat {
         if (width <= 0 || height <= 0 || config.removalStrokes.isEmpty()) {
@@ -35,7 +33,7 @@ object MaskGenerator {
             strokeJoin = Paint.Join.ROUND
         }
         config.removalStrokes.forEach { stroke ->
-            paint.strokeWidth = (width * stroke.radiusPct / 100f * 2f).coerceAtLeast(MIN_STROKE_RADIUS_PX * 2f)
+            paint.strokeWidth = BrushStrokeGeometry.strokeDiameterPx(width, height, stroke.radiusPct)
             val points = stroke.points
             when (points.size) {
                 0 -> Unit

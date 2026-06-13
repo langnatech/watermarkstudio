@@ -293,14 +293,14 @@ void upsampleMatches(
     }
 }
 
-void inpaintSingleScale(
+bool inpaintSingleScale(
     Image& image,
     int patchSize,
     int iterations,
     std::vector<Match>* matchesInOut
 ) {
     const std::vector<int> sources = collectSourcePixels(image);
-    if (sources.size() < kMinSourceSamples) return;
+    if (sources.size() < kMinSourceSamples) return false;
 
     const int radius = std::max(1, patchSize / 2);
     std::vector<Match> owned;
@@ -327,9 +327,10 @@ void inpaintSingleScale(
         patchMatchIteration(image, *matches, radius, i);
     }
     voteMaskedPixels(image, *matches, radius);
+    return true;
 }
 
-void inpaintMultiScale(Image& image, int patchSize, int emIterations, int pmIterations) {
+bool inpaintMultiScale(Image& image, int patchSize, int emIterations, int pmIterations) {
     std::vector<Image> pyramid;
     pyramid.push_back(image);
     while (
@@ -352,18 +353,21 @@ void inpaintMultiScale(Image& image, int patchSize, int emIterations, int pmIter
 
         const int levelIterations = std::max(1, pmIterations + (static_cast<int>(pyramid.size()) - 1 - level));
         for (int em = 0; em < std::max(1, emIterations); ++em) {
-            inpaintSingleScale(pyramid[level], patchSize, levelIterations, &matches);
+            if (!inpaintSingleScale(pyramid[level], patchSize, levelIterations, &matches)) {
+                return false;
+            }
         }
     }
 
     image.rgba.swap(pyramid.front().rgba);
+    return true;
 }
 
 } // namespace
 
 extern "C" {
 
-void patchMatchInpaintRgba(
+int patchMatchInpaintRgba(
     uint8_t* imageRgba,
     const uint8_t* mask,
     int width,
@@ -372,7 +376,7 @@ void patchMatchInpaintRgba(
     int emIterations,
     int pmIterations
 ) {
-    if (imageRgba == nullptr || mask == nullptr || width <= 0 || height <= 0) return;
+    if (imageRgba == nullptr || mask == nullptr || width <= 0 || height <= 0) return 2;
     Image image;
     image.width = width;
     image.height = height;
@@ -380,14 +384,16 @@ void patchMatchInpaintRgba(
     image.rgba.assign(imageRgba, imageRgba + pixelBytes);
     image.mask.assign(mask, mask + static_cast<size_t>(width) * static_cast<size_t>(height));
 
-    inpaintMultiScale(
+    const bool ok = inpaintMultiScale(
         image,
         std::max(3, patchSize | 1),
         std::max(1, emIterations),
         std::max(1, pmIterations)
     );
+    if (!ok) return 1;
 
     std::copy(image.rgba.begin(), image.rgba.end(), imageRgba);
+    return 0;
 }
 
 } // extern "C"

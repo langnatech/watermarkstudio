@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalDensity
 import com.watermarkstudio.model.RemovalStroke
 import com.watermarkstudio.model.RemovalStrokePoint
 import com.watermarkstudio.model.WatermarkConfig
+import com.watermarkstudio.removal.mask.BrushStrokeGeometry
 
 @Composable
 fun RemovalBrushOverlay(
@@ -105,13 +106,22 @@ fun RemovalBrushOverlay(
                     },
                 )
             config.removalStrokes.forEach { stroke ->
-                drawStroke(stroke.points, stroke.radiusPct, contentRect, strokeColor)
+                drawStroke(
+                    stroke.points,
+                    stroke.radiusPct,
+                    contentRect,
+                    contentSourceWidth,
+                    contentSourceHeight,
+                    strokeColor,
+                )
             }
             if (canPaint) {
                 drawStroke(
                     currentPoints,
                     config.brushRadiusPct,
                     contentRect,
+                    contentSourceWidth,
+                    contentSourceHeight,
                     Color(0xFF34D399).copy(alpha = 0.86f),
                 )
             }
@@ -140,10 +150,14 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStroke(
     points: List<RemovalStrokePoint>,
     radiusPct: Float,
     contentRect: WatermarkContentGeometry.ContentRect,
+    mediaWidthPx: Float,
+    mediaHeightPx: Float,
     color: Color,
 ) {
     if (points.isEmpty()) return
-    val strokeWidth = (contentRect.width * radiusPct / 100f * 2f).coerceAtLeast(4f)
+    val mediaDiameter = BrushStrokeGeometry.strokeDiameterPx(mediaWidthPx, mediaHeightPx, radiusPct)
+    val displayScale = contentRect.width / mediaWidthPx
+    val strokeWidth = (mediaDiameter * displayScale).coerceAtLeast(4f)
     if (points.size == 1) {
         val p = points.first().toOffset(contentRect)
         drawCircle(color = color, radius = strokeWidth / 2f, center = p)

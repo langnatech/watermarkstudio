@@ -1205,7 +1205,7 @@ fun PreviewContainer(
         mediaHeightPx = dims?.heightPx
     }
 
-    LaunchedEffect(item.uri, item.type, removeConfig?.removalStrokes, isPremium) {
+    LaunchedEffect(item.uri, item.type, removeConfig?.removalStrokes, removeConfig?.brushRadiusPct, isPremium) {
         if (!removeConfig?.removalStrokes.isNullOrEmpty()) {
             delay(RemovalPreviewHelper.PREVIEW_INPAINT_DEBOUNCE_MS)
         }

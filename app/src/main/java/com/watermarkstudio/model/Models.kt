@@ -41,7 +41,7 @@ data class WatermarkConfig(
     val x: Float = 50f, // Percentage 0-100
     val y: Float = 50f, // Percentage 0-100
     val scale: Float = 1.0f,
-    /** Brush radius as % of media width (REMOVE layers only). */
+    /** Brush radius as % of media shorter edge (REMOVE layers only). */
     val brushRadiusPct: Float = DEFAULT_BRUSH_RADIUS_PCT,
     val rotation: Float = 0f,
     /** ARGB; default white. Applied with [opacity] at export/preview time. */

@@ -53,7 +53,7 @@ object MaskedBackgroundPropagator {
             masked[index] = mask[index] != 0.toByte()
         }
 
-        val watermarkTint = applyBoundaryAlphaUnmix(red, green, blue, masked, width, height)
+        val tintGrid = applyBoundaryAlphaUnmix(red, green, blue, masked, width, height)
 
         repeat(propagationPasses) {
             val forwardChanged = relaxMaskedPixels(red, green, blue, masked, width, height, forward = true)
@@ -61,7 +61,7 @@ object MaskedBackgroundPropagator {
             if (!forwardChanged && !backwardChanged) return@repeat
         }
 
-        if (watermarkTint != null) {
+        if (tintGrid != null) {
             applyInteriorAlphaUnmix(
                 origRed,
                 origGreen,
@@ -71,7 +71,9 @@ object MaskedBackgroundPropagator {
                 blue,
                 masked,
                 depthMap,
-                watermarkTint,
+                width,
+                height,
+                tintGrid,
             )
         }
 
@@ -220,6 +222,19 @@ object MaskedBackgroundPropagator {
      * Estimates a global watermark tint from the mask boundary, then unmixes
      * `observed = (1 − α)·background + α·watermark` for boundary pixels.
      */
+    internal data class LocalTintGrid(
+        val cols: Int,
+        val rows: Int,
+        val cellTints: Array<Rgb?>,
+        val globalFallback: Rgb,
+    ) {
+        fun tintAt(x: Int, y: Int, width: Int, height: Int): Rgb {
+            val col = ((x * cols) / width).coerceIn(0, cols - 1)
+            val row = ((y * rows) / height).coerceIn(0, rows - 1)
+            return cellTints[row * cols + col] ?: globalFallback
+        }
+    }
+
     internal fun applyInteriorAlphaUnmix(
         origRed: FloatArray,
         origGreen: FloatArray,
@@ -229,10 +244,15 @@ object MaskedBackgroundPropagator {
         blue: FloatArray,
         masked: BooleanArray,
         depthMap: IntArray,
-        watermark: Rgb,
+        width: Int,
+        height: Int,
+        tintGrid: LocalTintGrid,
     ) {
         for (index in masked.indices) {
             if (!masked[index] || depthMap[index] <= 0) continue
+            val x = index % width
+            val y = index / width
+            val watermark = tintGrid.tintAt(x, y, width, height)
             val background = Rgb(red[index], green[index], blue[index])
             val observed = Rgb(origRed[index], origGreen[index], origBlue[index])
             val alpha = estimateAlpha(observed, background, watermark)
@@ -251,7 +271,7 @@ object MaskedBackgroundPropagator {
         masked: BooleanArray,
         width: Int,
         height: Int,
-    ): Rgb? {
+    ): LocalTintGrid? {
         val boundaryIndices = mutableListOf<Int>()
         for (y in 0 until height) {
             for (x in 0 until width) {
@@ -262,27 +282,59 @@ object MaskedBackgroundPropagator {
         }
         if (boundaryIndices.isEmpty()) return null
 
-        val watermarkRed = mutableListOf<Float>()
-        val watermarkGreen = mutableListOf<Float>()
-        val watermarkBlue = mutableListOf<Float>()
+        val cellRed = Array(TINT_GRID_COLS * TINT_GRID_ROWS) { mutableListOf<Float>() }
+        val cellGreen = Array(TINT_GRID_COLS * TINT_GRID_ROWS) { mutableListOf<Float>() }
+        val cellBlue = Array(TINT_GRID_COLS * TINT_GRID_ROWS) { mutableListOf<Float>() }
+        val globalRed = mutableListOf<Float>()
+        val globalGreen = mutableListOf<Float>()
+        val globalBlue = mutableListOf<Float>()
+
         for (index in boundaryIndices) {
+            val x = index % width
+            val y = index / width
             val background = averageUnmaskedNeighbors(red, green, blue, masked, width, height, index) ?: continue
             val observed = Rgb(red[index], green[index], blue[index])
             if (colorDistance(observed, background) < MIN_WM_DELTA) continue
-            watermarkRed.add((observed.r * 2f - background.r).coerceIn(0f, 255f))
-            watermarkGreen.add((observed.g * 2f - background.g).coerceIn(0f, 255f))
-            watermarkBlue.add((observed.b * 2f - background.b).coerceIn(0f, 255f))
+            val wr = (observed.r * 2f - background.r).coerceIn(0f, 255f)
+            val wg = (observed.g * 2f - background.g).coerceIn(0f, 255f)
+            val wb = (observed.b * 2f - background.b).coerceIn(0f, 255f)
+            globalRed.add(wr)
+            globalGreen.add(wg)
+            globalBlue.add(wb)
+            val col = ((x * TINT_GRID_COLS) / width).coerceIn(0, TINT_GRID_COLS - 1)
+            val row = ((y * TINT_GRID_ROWS) / height).coerceIn(0, TINT_GRID_ROWS - 1)
+            val cell = row * TINT_GRID_COLS + col
+            cellRed[cell].add(wr)
+            cellGreen[cell].add(wg)
+            cellBlue[cell].add(wb)
         }
-        if (watermarkRed.isEmpty()) return null
+        if (globalRed.isEmpty()) return null
 
-        val watermark =
+        val globalFallback =
             Rgb(
-                median(watermarkRed),
-                median(watermarkGreen),
-                median(watermarkBlue),
+                median(globalRed),
+                median(globalGreen),
+                median(globalBlue),
             )
+        val cellTints =
+            Array(TINT_GRID_COLS * TINT_GRID_ROWS) { cell ->
+                if (cellRed[cell].isEmpty()) {
+                    null
+                } else {
+                    Rgb(
+                        median(cellRed[cell]),
+                        median(cellGreen[cell]),
+                        median(cellBlue[cell]),
+                    )
+                }
+            }
+
+        val grid = LocalTintGrid(TINT_GRID_COLS, TINT_GRID_ROWS, cellTints, globalFallback)
 
         for (index in boundaryIndices) {
+            val x = index % width
+            val y = index / width
+            val watermark = grid.tintAt(x, y, width, height)
             val background = averageUnmaskedNeighbors(red, green, blue, masked, width, height, index) ?: continue
             val observed = Rgb(red[index], green[index], blue[index])
             val alpha = estimateAlpha(observed, background, watermark)
@@ -292,8 +344,11 @@ object MaskedBackgroundPropagator {
             green[index] = recovered.g
             blue[index] = recovered.b
         }
-        return watermark
+        return grid
     }
+
+    private const val TINT_GRID_COLS = 8
+    private const val TINT_GRID_ROWS = 8
 
     internal data class Rgb(val r: Float, val g: Float, val b: Float)
 

@@ -122,6 +122,13 @@ class MaskedBackgroundPropagatorTest {
         }
 
         val center = 20 * width + 20
+        val tintGrid =
+            MaskedBackgroundPropagator.LocalTintGrid(
+                cols = 8,
+                rows = 8,
+                cellTints = Array(64) { Rgb(wmR, wmG, wmB) },
+                globalFallback = Rgb(wmR, wmG, wmB),
+            )
         MaskedBackgroundPropagator.applyInteriorAlphaUnmix(
             origRed,
             origGreen,
@@ -131,11 +138,28 @@ class MaskedBackgroundPropagatorTest {
             blue,
             masked,
             depth,
-            Rgb(wmR, wmG, wmB),
+            width,
+            height,
+            tintGrid,
         )
 
         assertTrue(red[center] < origRed[center])
         assertTrue(abs(red[center] - (20f + 20 * 3f)) < 25f)
+    }
+
+    @Test
+    fun localTintGrid_usesDistinctCellTints() {
+        val grid =
+            MaskedBackgroundPropagator.LocalTintGrid(
+                cols = 2,
+                rows = 2,
+                cellTints = arrayOf(Rgb(10f, 10f, 10f), null, null, Rgb(200f, 20f, 20f)),
+                globalFallback = Rgb(100f, 100f, 100f),
+            )
+        val topLeft = grid.tintAt(0, 0, width = 100, height = 100)
+        val bottomRight = grid.tintAt(99, 99, width = 100, height = 100)
+        assertTrue(topLeft.r < 50f)
+        assertTrue(bottomRight.r > 150f)
     }
 
     @Test

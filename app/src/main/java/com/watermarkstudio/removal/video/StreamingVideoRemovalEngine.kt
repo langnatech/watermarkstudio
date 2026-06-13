@@ -6,18 +6,20 @@ import android.net.Uri
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.removal.RemovalProgress
 import com.watermarkstudio.removal.RemovalQuality
-import java.io.File
 
 /**
- * Phase 3b: decode → process → encode one frame at a time (bounded neighbor memory).
+ * Decode → temporal prefill → PatchMatch refine → encode one frame at a time.
  */
 object StreamingVideoRemovalEngine {
 
     data class StreamingResult(
-        val silentFile: File,
+        val silentFile: java.io.File,
         val frameCount: Int,
         val fps: Float,
     )
+
+    private const val MAX_FAILURE_RATIO = 0.05f
+    private const val MIN_FAILURE_COUNT = 3
 
     fun process(
         context: Context,
@@ -26,7 +28,7 @@ object StreamingVideoRemovalEngine {
         sampling: VideoRemovalLimits.SamplingPlan,
         maxDimension: Int,
         quality: RemovalQuality,
-        silentOutputFile: File,
+        silentOutputFile: java.io.File,
         progress: RemovalProgress?,
     ): StreamingResult? {
         val preferMediaCodec = false
@@ -41,8 +43,10 @@ object StreamingVideoRemovalEngine {
 
         var curr: Bitmap? = null
         var frameCount = 0
+        var failedFrames = 0
         var outputFps = sampling.targetFps.toFloat()
         var maskCache: FrameInpaintBlender.CachedMask? = null
+        val frameWindow = TemporalPrefillProcessor.SlidingWindow()
 
         try {
             source.use { src ->
@@ -56,7 +60,25 @@ object StreamingVideoRemovalEngine {
                     IncrementalVideoEncoder(silentOutputFile, curr.width, curr.height, src.fps)
                 try {
                     while (true) {
-                        val processed = processFrame(curr!!, config, quality, maskCache!!)
+                        val processResult =
+                            processFrame(
+                                curr!!,
+                                config,
+                                quality,
+                                maskCache!!,
+                                frameWindow,
+                            )
+                        val processed =
+                            processResult.bitmap
+                                ?: run {
+                                    failedFrames++
+                                    if (shouldAbortExport(frameCount, failedFrames)) {
+                                        return null
+                                    }
+                                    VideoFrameUtils.prepareForVideoEncode(
+                                        curr!!.copy(Bitmap.Config.ARGB_8888, false),
+                                    )
+                                }
                         if (!encoder.submitFrame(processed)) {
                             processed.recycle()
                             return null
@@ -79,6 +101,7 @@ object StreamingVideoRemovalEngine {
                 }
             }
             if (frameCount == 0) return null
+            if (shouldAbortExport(frameCount, failedFrames)) return null
             progress?.report(0.75f)
             return StreamingResult(silentOutputFile, frameCount, outputFps)
         } catch (t: Throwable) {
@@ -86,27 +109,48 @@ object StreamingVideoRemovalEngine {
             curr?.recycle()
             return null
         } finally {
+            frameWindow.release()
             maskCache?.release()
         }
     }
+
+    private data class FrameProcessResult(val bitmap: Bitmap?)
 
     private fun processFrame(
         curr: Bitmap,
         config: WatermarkConfig,
         quality: RemovalQuality,
         maskCache: FrameInpaintBlender.CachedMask,
-    ): Bitmap {
+        frameWindow: TemporalPrefillProcessor.SlidingWindow,
+    ): FrameProcessResult {
         val base = VideoFrameUtils.prepareForVideoEncode(curr)
         return try {
-            val blended = FrameInpaintBlender.blendFrame(base, config, quality, maskCache)
-            val encoded = VideoFrameUtils.prepareForVideoEncode(blended)
-            if (encoded !== blended) blended.recycle()
-            encoded
+            val windowCopy = base.copy(Bitmap.Config.ARGB_8888, false)
+            frameWindow.push(windowCopy)
+            val prefilled =
+                TemporalPrefillProcessor.prefill(
+                    base,
+                    frameWindow.snapshot(),
+                    config,
+                    quality,
+                )
+            val refined = FrameInpaintBlender.refineFrame(prefilled, quality, maskCache)
+            if (prefilled !== base && prefilled !== refined && !prefilled.isRecycled) {
+                prefilled.recycle()
+            }
+            val encoded = VideoFrameUtils.prepareForVideoEncode(refined)
+            if (encoded !== refined) refined.recycle()
+            FrameProcessResult(encoded)
         } catch (t: Throwable) {
             t.printStackTrace()
-            VideoFrameUtils.prepareForVideoEncode(base.copy(Bitmap.Config.ARGB_8888, false))
+            FrameProcessResult(null)
         } finally {
             if (base !== curr) base.recycle()
         }
+    }
+
+    private fun shouldAbortExport(processedFrames: Int, failedFrames: Int): Boolean {
+        val threshold = maxOf(MIN_FAILURE_COUNT, (processedFrames * MAX_FAILURE_RATIO).toInt())
+        return failedFrames > threshold
     }
 }

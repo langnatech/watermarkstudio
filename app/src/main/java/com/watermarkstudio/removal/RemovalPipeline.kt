@@ -23,7 +23,7 @@ object RemovalPipeline {
     ): Uri? = withContext(Dispatchers.IO) {
         if (!RemovalInputValidator.hasPaintedMask(config)) return@withContext null
         val quality = RemovalQualityResolver.resolve(isPremium, context)
-        val maxDim = if (isPremium) 2500 else 1024
+        val maxDim = RemovalExportLimits.imageExportMaxDim(isPremium)
         when (item.type) {
             MediaType.IMAGE -> {
                 val bitmap =
@@ -48,7 +48,8 @@ object RemovalPipeline {
                     item.uri,
                     config,
                     VideoRemovalLimits.clampClipDurationMs(maxDurationMs, isPremium),
-                    if (isPremium) 1080 else 720,
+                    if (isPremium) RemovalExportLimits.PREMIUM_VIDEO_MAX_DIM
+                    else RemovalExportLimits.FREE_VIDEO_MAX_DIM,
                     isPremium,
                     quality,
                     progress,

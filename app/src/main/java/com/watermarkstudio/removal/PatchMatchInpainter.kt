@@ -10,12 +10,13 @@ import org.opencv.core.Rect
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import org.opencv.photo.Photo
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 object PatchMatchInpainter {
 
     private const val TELEA_MIN_RADIUS = 3.0
-    private const val TELEA_MAX_RADIUS = 12.0
+    private const val NS_MAX_RADIUS = 24.0
 
     fun inpaint(
         bitmap: Bitmap,
@@ -23,6 +24,7 @@ object PatchMatchInpainter {
         region: RemovalRegion,
         quality: RemovalQuality,
         target: InpaintTarget = InpaintTarget.IMAGE,
+        previewScale: PreviewScaleContext? = null,
     ): Bitmap {
         if (bitmap.width <= 0 || bitmap.height <= 0 || region.width <= 0 || region.height <= 0) {
             return bitmap.copy(Bitmap.Config.ARGB_8888, true)
@@ -32,10 +34,10 @@ object PatchMatchInpainter {
         }
 
         return if (RemovalNative.isAvailable()) {
-            runCatching { inpaintNative(bitmap, mask, region, quality, target) }
-                .getOrElse { fallbackTelea(bitmap, mask) }
+            runCatching { inpaintNative(bitmap, mask, region, quality, target, previewScale) }
+                .getOrElse { fallbackNsOnCrop(bitmap, mask, region) }
         } else {
-            fallbackTelea(bitmap, mask)
+            fallbackNsOnCrop(bitmap, mask, region)
         }
     }
 
@@ -45,9 +47,19 @@ object PatchMatchInpainter {
         region: RemovalRegion,
         quality: RemovalQuality,
         target: InpaintTarget,
+        previewScale: PreviewScaleContext?,
     ): Bitmap {
         val maskedPixels = Core.countNonZero(mask)
-        val runConfig = RemovalInpaintTuning.resolve(region, maskedPixels, quality, target)
+        val imageShortEdge = min(bitmap.width, bitmap.height)
+        val runConfig =
+            RemovalInpaintTuning.resolve(
+                region,
+                maskedPixels,
+                quality,
+                target,
+                imageShortEdge,
+                previewScale,
+            )
         val contextMargin = runConfig.contextMarginPx
         val cropLeft = (region.left - contextMargin).coerceAtLeast(0)
         val cropTop = (region.top - contextMargin).coerceAtLeast(0)
@@ -62,15 +74,21 @@ object PatchMatchInpainter {
         val imageBytes = bitmapToRgbaBytes(crop)
         val maskBytes = maskCropBytes(mask, cropLeft, cropTop, cropWidth, cropHeight)
         MaskedBackgroundPropagator.propagateIntoMask(imageBytes, maskBytes, cropWidth, cropHeight)
-        RemovalNative.patchMatchInpaint(
-            imageBytes,
-            maskBytes,
-            cropWidth,
-            cropHeight,
-            runConfig.patchSize,
-            runConfig.emIterations,
-            runConfig.pmIterations,
-        )
+        val nativeResult =
+            RemovalNative.patchMatchInpaint(
+                imageBytes,
+                maskBytes,
+                cropWidth,
+                cropHeight,
+                runConfig.patchSize,
+                runConfig.emIterations,
+                runConfig.pmIterations,
+            )
+        if (nativeResult != RemovalNative.PATCH_MATCH_OK) {
+            crop.recycle()
+            if (source !== bitmap) source.recycle()
+            return fallbackNsOnCrop(bitmap, mask, region)
+        }
 
         val repairedCrop = rgbaBytesToBitmap(imageBytes, cropWidth, cropHeight)
         val out = source.copy(Bitmap.Config.ARGB_8888, true)
@@ -91,30 +109,71 @@ object PatchMatchInpainter {
         return out
     }
 
-    private fun fallbackTelea(bitmap: Bitmap, mask: Mat): Bitmap {
+    private fun fallbackNsOnCrop(bitmap: Bitmap, mask: Mat, region: RemovalRegion): Bitmap {
+        val maskedPixels = Core.countNonZero(mask)
+        val imageShortEdge = min(bitmap.width, bitmap.height)
+        val runConfig =
+            RemovalInpaintTuning.resolve(
+                region,
+                maskedPixels,
+                RemovalQuality.STANDARD,
+                InpaintTarget.IMAGE,
+                imageShortEdge,
+            )
+        val contextMargin = runConfig.contextMarginPx
+        val cropLeft = (region.left - contextMargin).coerceAtLeast(0)
+        val cropTop = (region.top - contextMargin).coerceAtLeast(0)
+        val cropRight = (region.right + contextMargin).coerceAtMost(bitmap.width)
+        val cropBottom = (region.bottom + contextMargin).coerceAtMost(bitmap.height)
+        val cropWidth = cropRight - cropLeft
+        val cropHeight = cropBottom - cropTop
+        if (cropWidth <= 0 || cropHeight <= 0) return bitmap.copy(Bitmap.Config.ARGB_8888, true)
+
+        val source = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        val crop = Bitmap.createBitmap(source, cropLeft, cropTop, cropWidth, cropHeight)
+        val maskCrop = Mat(mask, Rect(cropLeft, cropTop, cropWidth, cropHeight))
         val src = Mat()
         val dst = Mat()
         return try {
-            val preprocessed = preprocessBitmapForInpaint(bitmap, mask)
+            val preprocessed = preprocessBitmapForInpaint(crop, maskCrop)
             Utils.bitmapToMat(preprocessed, src)
-            if (preprocessed !== bitmap) preprocessed.recycle()
+            if (preprocessed !== crop) preprocessed.recycle()
             if (src.channels() == 4) {
                 Imgproc.cvtColor(src, src, Imgproc.COLOR_RGBA2BGR)
             }
-            val maskedPixels = Core.countNonZero(mask)
+            val cropMaskedPixels = Core.countNonZero(maskCrop)
+            val cropShortEdge = min(cropWidth, cropHeight)
             val radius =
-                MaskedBackgroundPropagator.inpaintRadiusForMaskArea(maskedPixels)
-                    .coerceIn(TELEA_MIN_RADIUS, TELEA_MAX_RADIUS)
-            Photo.inpaint(src, mask, dst, radius, Photo.INPAINT_NS)
+                MaskedBackgroundPropagator.inpaintRadiusForMaskArea(cropMaskedPixels)
+                    .coerceIn(TELEA_MIN_RADIUS, min(NS_MAX_RADIUS, cropShortEdge / 20.0))
+            Photo.inpaint(src, maskCrop, dst, radius, Photo.INPAINT_NS)
             if (dst.channels() == 3) {
                 Imgproc.cvtColor(dst, dst, Imgproc.COLOR_BGR2RGBA)
             }
-            Bitmap.createBitmap(dst.cols(), dst.rows(), Bitmap.Config.ARGB_8888).also {
+            val repairedCrop = Bitmap.createBitmap(cropWidth, cropHeight, Bitmap.Config.ARGB_8888).also {
                 Utils.matToBitmap(dst, it)
             }
+            val out = source.copy(Bitmap.Config.ARGB_8888, true)
+            val maskBytes = maskCropBytes(mask, cropLeft, cropTop, cropWidth, cropHeight)
+            featherPaste(
+                out,
+                source,
+                repairedCrop,
+                maskBytes,
+                cropLeft,
+                cropTop,
+                cropWidth,
+                cropHeight,
+                runConfig.featherRadiusPx,
+            )
+            repairedCrop.recycle()
+            out
         } finally {
             src.release()
             dst.release()
+            maskCrop.release()
+            crop.recycle()
+            if (source !== bitmap) source.recycle()
         }
     }
 
@@ -128,22 +187,25 @@ object PatchMatchInpainter {
     }
 
     private fun bitmapToRgbaBytes(bitmap: Bitmap): ByteArray {
-        val pixels = IntArray(bitmap.width * bitmap.height)
+        val pixelCount = bitmap.width * bitmap.height
+        val rgba = ByteArray(pixelCount * 4)
+        val pixels = IntArray(pixelCount)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        val out = ByteArray(pixels.size * 4)
-        pixels.forEachIndexed { index, color ->
+        for (index in pixels.indices) {
+            val color = pixels[index]
             val base = index * 4
-            out[base] = ((color shr 16) and 0xFF).toByte()
-            out[base + 1] = ((color shr 8) and 0xFF).toByte()
-            out[base + 2] = (color and 0xFF).toByte()
-            out[base + 3] = ((color shr 24) and 0xFF).toByte()
+            rgba[base] = ((color shr 16) and 0xFF).toByte()
+            rgba[base + 1] = ((color shr 8) and 0xFF).toByte()
+            rgba[base + 2] = (color and 0xFF).toByte()
+            rgba[base + 3] = ((color shr 24) and 0xFF).toByte()
         }
-        return out
+        return rgba
     }
 
     private fun rgbaBytesToBitmap(bytes: ByteArray, width: Int, height: Int): Bitmap {
-        val pixels = IntArray(width * height)
-        for (index in pixels.indices) {
+        val pixelCount = width * height
+        val pixels = IntArray(pixelCount)
+        for (index in 0 until pixelCount) {
             val base = index * 4
             val r = bytes[base].toInt() and 0xFF
             val g = bytes[base + 1].toInt() and 0xFF

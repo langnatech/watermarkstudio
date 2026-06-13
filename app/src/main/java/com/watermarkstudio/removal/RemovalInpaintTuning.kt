@@ -2,6 +2,7 @@ package com.watermarkstudio.removal
 
 import com.watermarkstudio.util.RemovalRegion
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
@@ -24,15 +25,17 @@ object RemovalInpaintTuning {
         maskedPixelCount: Int,
         quality: RemovalQuality,
         target: InpaintTarget,
+        imageShortEdge: Int,
+        previewScale: PreviewScaleContext? = null,
     ): RunConfig {
         val base = baseParameters(quality, target)
-        val scaled = scaleForRegion(base, region, maskedPixelCount, target)
+        val scaled = scaleForRegion(base, region, maskedPixelCount, target, previewScale)
         return RunConfig(
             patchSize = scaled.patchSize,
             emIterations = scaled.emIterations,
             pmIterations = scaled.pmIterations,
             contextMarginPx = contextMarginPx(region, target),
-            featherRadiusPx = featherRadiusPx(region),
+            featherRadiusPx = featherRadiusPx(region, imageShortEdge),
         )
     }
 
@@ -51,9 +54,13 @@ object RemovalInpaintTuning {
         return (span * ratio).roundToInt().coerceIn(minMargin, maxMargin)
     }
 
-    internal fun featherRadiusPx(region: RemovalRegion): Int {
-        val estimate = sqrt(region.width.toDouble() * region.height) * FEATHER_RADIUS_SCALE
-        return estimate.roundToInt().coerceIn(FEATHER_MIN_PX, FEATHER_MAX_PX)
+    internal fun featherRadiusPx(region: RemovalRegion, imageShortEdge: Int): Int {
+        val regionArea = region.width.toLong() * region.height
+        val fromRegion = sqrt(regionArea.toDouble()) * FEATHER_RADIUS_SCALE
+        val fromImage = imageShortEdge * FEATHER_IMAGE_EDGE_RATIO
+        val estimate = fromRegion + fromImage
+        val maxFeather = min(FEATHER_ABSOLUTE_MAX_PX, imageShortEdge / FEATHER_IMAGE_EDGE_DIVISOR)
+        return estimate.roundToInt().coerceIn(FEATHER_MIN_PX, maxFeather.coerceAtLeast(FEATHER_MIN_PX))
     }
 
     private fun baseParameters(quality: RemovalQuality, target: InpaintTarget): PatchMatchParams =
@@ -79,10 +86,14 @@ object RemovalInpaintTuning {
         region: RemovalRegion,
         maskedPixelCount: Int,
         target: InpaintTarget,
+        previewScale: PreviewScaleContext?,
     ): PatchMatchParams {
         if (target == InpaintTarget.VIDEO) return base
+        val areaScale = previewScale?.areaScale ?: 1f
+        val regionAreaThreshold = (LARGE_REGION_AREA_PX * areaScale).toLong()
+        val maskPixelThreshold = (LARGE_MASK_PIXELS * areaScale).roundToInt()
         val regionArea = region.width.toLong() * region.height
-        val largeRegion = regionArea >= LARGE_REGION_AREA_PX || maskedPixelCount >= LARGE_MASK_PIXELS
+        val largeRegion = regionArea >= regionAreaThreshold || maskedPixelCount >= maskPixelThreshold
         if (!largeRegion) return base
         return base.copy(
             emIterations = (base.emIterations + LARGE_REGION_EXTRA_EM).coerceAtMost(MAX_EM_ITERATIONS),
@@ -100,11 +111,11 @@ object RemovalInpaintTuning {
     private const val STANDARD_EM_ITERATIONS = 1
     private const val STANDARD_PM_ITERATIONS = 3
     private const val ADVANCED_EM_ITERATIONS = 2
-    private const val ADVANCED_PM_ITERATIONS = 5
+    private const val ADVANCED_PM_ITERATIONS = 6
     private const val VIDEO_STANDARD_EM_ITERATIONS = 1
     private const val VIDEO_STANDARD_PM_ITERATIONS = 2
     private const val VIDEO_ADVANCED_EM_ITERATIONS = 1
-    private const val VIDEO_ADVANCED_PM_ITERATIONS = 3
+    private const val VIDEO_ADVANCED_PM_ITERATIONS = 4
 
     private const val IMAGE_MARGIN_RATIO = 0.5f
     private const val VIDEO_MARGIN_RATIO = 0.35f
@@ -114,13 +125,15 @@ object RemovalInpaintTuning {
     private const val VIDEO_MARGIN_MAX_PX = 128
 
     private const val FEATHER_RADIUS_SCALE = 0.012
+    private const val FEATHER_IMAGE_EDGE_RATIO = 0.008f
+    private const val FEATHER_IMAGE_EDGE_DIVISOR = 80
     private const val FEATHER_MIN_PX = 3
-    private const val FEATHER_MAX_PX = 8
+    private const val FEATHER_ABSOLUTE_MAX_PX = 32
 
     private const val LARGE_REGION_AREA_PX = 80_000L
     private const val LARGE_MASK_PIXELS = 12_000
     private const val LARGE_REGION_EXTRA_EM = 1
     private const val LARGE_REGION_EXTRA_PM = 2
     private const val MAX_EM_ITERATIONS = 3
-    private const val MAX_PM_ITERATIONS = 8
+    private const val MAX_PM_ITERATIONS = 10
 }

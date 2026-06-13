@@ -17,6 +17,7 @@ import java.util.concurrent.Executors
 object VideoRemovalEngine {
 
     private const val TAG = "VideoRemovalEngine"
+    private const val BATCH_MEMORY_LIMIT_BYTES = 256L * 1024L * 1024L
 
     /** OpenCV native code is not safe under parallel calls; serialize all video removal work. */
     private val removalDispatcher =
@@ -175,6 +176,13 @@ object VideoRemovalEngine {
         fun report(stageStart: Float, stageEnd: Float, fraction: Float) {
             progress?.report(stageStart + (stageEnd - stageStart) * fraction.coerceIn(0f, 1f))
         }
+        val estimatedBytes =
+            sampling.maxFrames.toLong() * maxDimension * maxDimension * 4L
+        if (estimatedBytes > BATCH_MEMORY_LIMIT_BYTES) {
+            Log.e(TAG, "Batch fallback rejected: estimated memory ${estimatedBytes / (1024 * 1024)}MB")
+            return null
+        }
+
         val decoded =
             VideoFrameExtractor.extract(
                 context,
@@ -194,12 +202,28 @@ object VideoRemovalEngine {
             } ?: return null
 
         val maskCache = FrameInpaintBlender.prepareMask(decoded.width, decoded.height, config)
+        val frameWindow = TemporalPrefillProcessor.SlidingWindow()
         val blended =
             try {
-                decoded.bitmaps.map { frame ->
-                    FrameInpaintBlender.blendFrame(frame, config, quality, maskCache)
+                decoded.bitmaps.mapIndexed { index, frame ->
+                    val windowCopy = frame.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+                    frameWindow.push(windowCopy)
+                    val prefilled =
+                        TemporalPrefillProcessor.prefill(
+                            frame,
+                            frameWindow.snapshot(),
+                            config,
+                            quality,
+                            lookahead = decoded.bitmaps.getOrNull(index + 1),
+                        )
+                    val refined = FrameInpaintBlender.refineFrame(prefilled, quality, maskCache)
+                    if (prefilled !== frame && prefilled !== refined && !prefilled.isRecycled) {
+                        prefilled.recycle()
+                    }
+                    refined
                 }
             } finally {
+                frameWindow.release()
                 maskCache.release()
             }
         val videoDurationUs = VideoRemovalLimits.videoDurationUs(blended.size, decoded.fps)

@@ -2,6 +2,7 @@ package com.watermarkstudio.util
 
 import android.graphics.Rect
 import com.watermarkstudio.model.WatermarkConfig
+import com.watermarkstudio.removal.mask.BrushStrokeGeometry
 
 /**
  * Performance crop bounding box around painted strokes for PatchMatch / temporal recovery.
@@ -42,7 +43,9 @@ data class RemovalRegion(
             var maxRadiusPx = 0f
 
             config.removalStrokes.forEach { stroke ->
-                val radiusPx = (bitmapWidth * stroke.radiusPct / 100f).coerceAtLeast(1f)
+                val radiusPx =
+                    BrushStrokeGeometry.strokeRadiusPx(bitmapWidth, bitmapHeight, stroke.radiusPct)
+                        .coerceAtLeast(1f)
                 maxRadiusPx = maxOf(maxRadiusPx, radiusPx)
                 stroke.points.forEach { point ->
                     val x = bitmapWidth * (point.xPct / 100f)

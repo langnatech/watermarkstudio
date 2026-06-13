@@ -26,6 +26,20 @@ object FrameInpaintBlender {
         return CachedMask(mask, region)
     }
 
+    /** PatchMatch refine after temporal prefill (video export path). */
+    fun refineFrame(
+        frame: Bitmap,
+        quality: RemovalQuality,
+        cachedMask: CachedMask,
+    ): Bitmap =
+        PatchMatchInpainter.inpaint(
+            frame,
+            cachedMask.mask,
+            cachedMask.region,
+            quality,
+            InpaintTarget.VIDEO,
+        )
+
     fun blendFrame(
         frame: Bitmap,
         config: WatermarkConfig,
@@ -33,13 +47,7 @@ object FrameInpaintBlender {
         cachedMask: CachedMask? = null,
     ): Bitmap {
         if (cachedMask != null) {
-            return PatchMatchInpainter.inpaint(
-                frame,
-                cachedMask.mask,
-                cachedMask.region,
-                quality,
-                InpaintTarget.VIDEO,
-            )
+            return refineFrame(frame, quality, cachedMask)
         }
         val mask = MaskGenerator.createMaskMat(frame.width, frame.height, config)
         val region = MaskGenerator.regionForConfig(frame.width, frame.height, config)

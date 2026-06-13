@@ -62,6 +62,10 @@ object RemovalNative {
         )
     }
 
+    const val PATCH_MATCH_OK = 0
+    const val PATCH_MATCH_INSUFFICIENT_SOURCES = 1
+    const val PATCH_MATCH_INVALID = 2
+
     fun patchMatchInpaint(
         imageRgba: ByteArray,
         mask: ByteArray,
@@ -70,9 +74,9 @@ object RemovalNative {
         patchSize: Int,
         emIterations: Int,
         pmIterations: Int,
-    ) {
+    ): Int {
         check(ensureLoaded()) { "removal_native is not loaded on this device" }
-        nativePatchMatchInpaint(
+        return nativePatchMatchInpaint(
             imageRgba,
             mask,
             width,
@@ -106,5 +110,5 @@ object RemovalNative {
         patchSize: Int,
         emIterations: Int,
         pmIterations: Int,
-    )
+    ): Int
 }

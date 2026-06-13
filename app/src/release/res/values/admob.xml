@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Replace with your production AdMob IDs before publishing to Play Store. -->
-    <string name="admob_app_id" translatable="false">ca-app-pub-3940256099942544~3347511713</string>
-    <string name="admob_banner_id" translatable="false">ca-app-pub-3940256099942544/6300978111</string>
-    <string name="admob_interstitial_id" translatable="false">ca-app-pub-3940256099942544/1033173712</string>
+    <string name="admob_app_id" translatable="false">ca-app-pub-8798068561135489~6634529402</string>
+    <string name="admob_banner_id" translatable="false">ca-app-pub-8798068561135489/9237476162</string>
+    <string name="admob_interstitial_id" translatable="false">ca-app-pub-8798068561135489/1090221972</string>
 </resources>

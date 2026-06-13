@@ -3,9 +3,9 @@ package com.watermarkstudio.removal
 import android.content.Context
 
 enum class RemovalQuality {
-    /** Brush mask + PatchMatch with conservative iterations; video keeps source audio. */
+    /** Brush mask + temporal median prefill + PatchMatch refine; video keeps source audio. */
     STANDARD,
-    /** Brush mask + PatchMatch with more iterations; video adds lightweight optical-flow recovery. */
+    /** 7-frame temporal fusion + optical-flow prefill + PatchMatch refine; video keeps source audio. */
     ADVANCED,
 }
 
