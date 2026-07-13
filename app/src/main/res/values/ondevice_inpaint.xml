@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Stage C: on-device LaMa (Carve/LaMa-ONNX). Values are read at runtime; do not scatter magic numbers. -->
+    <string name="ondevice_inpaint_asset_path" translatable="false">ml/lama_fp32.onnx</string>
+    <string name="ondevice_inpaint_local_file_name" translatable="false">lama_fp32.onnx</string>
+    <string name="ondevice_inpaint_input_image" translatable="false">image</string>
+    <string name="ondevice_inpaint_input_mask" translatable="false">mask</string>
+    <integer name="ondevice_inpaint_input_size">512</integer>
+    <!-- Minimum expected ONNX byte size (reject truncated assets). ~198MB model. -->
+    <integer name="ondevice_inpaint_min_model_bytes">200000000</integer>
+    <!-- Soft-mask threshold used when building the binary LaMa mask (0–255). -->
+    <integer name="ondevice_inpaint_mask_threshold">40</integer>
+    <bool name="ondevice_inpaint_enabled">true</bool>
+    <bool name="ondevice_inpaint_enable_for_video">false</bool>
+    <bool name="ondevice_inpaint_enable_for_preview">false</bool>
+</resources>

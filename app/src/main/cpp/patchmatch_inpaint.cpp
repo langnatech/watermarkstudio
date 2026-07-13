@@ -8,7 +8,7 @@ namespace {
 
 constexpr int kChannels = 4;
 constexpr int kMinSourceSamples = 16;
-constexpr int kMaxPyramidBase = 96;
+constexpr int kMaxPyramidBase = 128;
 constexpr float kBadDistance = 1.0e20f;
 
 struct Image {
@@ -250,17 +250,53 @@ Image downsample(const Image& src) {
     return dst;
 }
 
+void sampleBilinearRgb(const Image& image, float x, float y, float& r, float& g, float& b) {
+    const float maxX = static_cast<float>(std::max(0, image.width - 1));
+    const float maxY = static_cast<float>(std::max(0, image.height - 1));
+    const float cx = std::min(maxX, std::max(0.0f, x));
+    const float cy = std::min(maxY, std::max(0.0f, y));
+    const int x0 = static_cast<int>(cx);
+    const int y0 = static_cast<int>(cy);
+    const int x1 = std::min(image.width - 1, x0 + 1);
+    const int y1 = std::min(image.height - 1, y0 + 1);
+    const float tx = cx - static_cast<float>(x0);
+    const float ty = cy - static_cast<float>(y0);
+    const int i00 = pixelIndex(image.width, x0, y0);
+    const int i10 = pixelIndex(image.width, x1, y0);
+    const int i01 = pixelIndex(image.width, x0, y1);
+    const int i11 = pixelIndex(image.width, x1, y1);
+    const float w00 = (1.0f - tx) * (1.0f - ty);
+    const float w10 = tx * (1.0f - ty);
+    const float w01 = (1.0f - tx) * ty;
+    const float w11 = tx * ty;
+    r = image.rgba[i00] * w00 + image.rgba[i10] * w10 + image.rgba[i01] * w01 + image.rgba[i11] * w11;
+    g = image.rgba[i00 + 1] * w00 + image.rgba[i10 + 1] * w10 + image.rgba[i01 + 1] * w01 +
+        image.rgba[i11 + 1] * w11;
+    b = image.rgba[i00 + 2] * w00 + image.rgba[i10 + 2] * w10 + image.rgba[i01 + 2] * w01 +
+        image.rgba[i11 + 2] * w11;
+}
+
 void upsampleIntoMasked(const Image& coarse, Image& fine) {
+    // Bilinear upsample into masked pixels — nearest-neighbor creates blocky color patches.
+    const float scaleX =
+        fine.width > 1 ? static_cast<float>(std::max(1, coarse.width - 1)) /
+                             static_cast<float>(std::max(1, fine.width - 1))
+                       : 0.0f;
+    const float scaleY =
+        fine.height > 1 ? static_cast<float>(std::max(1, coarse.height - 1)) /
+                              static_cast<float>(std::max(1, fine.height - 1))
+                        : 0.0f;
     for (int y = 0; y < fine.height; ++y) {
         for (int x = 0; x < fine.width; ++x) {
             if (!isMasked(fine, x, y)) continue;
-            const int cx = std::min(coarse.width - 1, x * coarse.width / fine.width);
-            const int cy = std::min(coarse.height - 1, y * coarse.height / fine.height);
-            const int ci = pixelIndex(coarse.width, cx, cy);
+            float r = 0.0f;
+            float g = 0.0f;
+            float b = 0.0f;
+            sampleBilinearRgb(coarse, static_cast<float>(x) * scaleX, static_cast<float>(y) * scaleY, r, g, b);
             const int fi = pixelIndex(fine.width, x, y);
-            fine.rgba[fi] = coarse.rgba[ci];
-            fine.rgba[fi + 1] = coarse.rgba[ci + 1];
-            fine.rgba[fi + 2] = coarse.rgba[ci + 2];
+            fine.rgba[fi] = static_cast<uint8_t>(clampInt(static_cast<int>(r + 0.5f), 0, 255));
+            fine.rgba[fi + 1] = static_cast<uint8_t>(clampInt(static_cast<int>(g + 0.5f), 0, 255));
+            fine.rgba[fi + 2] = static_cast<uint8_t>(clampInt(static_cast<int>(b + 0.5f), 0, 255));
         }
     }
 }

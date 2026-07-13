@@ -42,7 +42,7 @@ object ImageRemovalEngine {
         val mask = MaskGenerator.createMaskMat(bitmap.width, bitmap.height, config)
         val region = MaskGenerator.regionForConfig(bitmap.width, bitmap.height, config)
         try {
-            val out = PatchMatchInpainter.inpaint(bitmap, mask, region, quality)
+            val out = PatchMatchInpainter.inpaint(bitmap, mask, region, quality, context = context)
             bitmap.recycle()
             out
         } finally {

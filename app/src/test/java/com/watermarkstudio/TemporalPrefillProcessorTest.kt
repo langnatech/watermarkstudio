@@ -68,6 +68,48 @@ class TemporalPrefillProcessorTest {
     }
 
     @Test
+    fun fuseMedianAndOpticalFlow_averagesCorePixels() {
+        val width = 32
+        val height = 32
+        val config =
+            WatermarkConfig(
+                type = WatermarkType.REMOVE,
+                removalStrokes =
+                    listOf(
+                        RemovalStroke(
+                            points = listOf(RemovalStrokePoint(50f, 50f)),
+                            radiusPct = 8f,
+                        ),
+                    ),
+            )
+        val current = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.rgb(10, 10, 10))
+        }
+        val median = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.rgb(0, 0, 100))
+        }
+        val flowed = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.rgb(200, 0, 0))
+        }
+        val fused =
+            try {
+                TemporalPrefillProcessor.fuseMedianAndOpticalFlow(current, median, flowed, config)
+            } catch (_: UnsatisfiedLinkError) {
+                current.recycle()
+                median.recycle()
+                flowed.recycle()
+                return
+            }
+        val center = fused.getPixel(16, 16)
+        assert(Color.red(center) in 90..110) { "fused red=${Color.red(center)}" }
+        assert(Color.blue(center) in 40..60) { "fused blue=${Color.blue(center)}" }
+        current.recycle()
+        median.recycle()
+        flowed.recycle()
+        if (fused !== current) fused.recycle()
+    }
+
+    @Test
     fun slidingWindow_evictsOldestFrame() {
         val window = TemporalPrefillProcessor.SlidingWindow(maxSize = 3)
         val a = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)

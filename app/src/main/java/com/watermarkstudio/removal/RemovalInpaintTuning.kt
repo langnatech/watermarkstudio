@@ -68,16 +68,16 @@ object RemovalInpaintTuning {
             InpaintTarget.IMAGE ->
                 when (quality) {
                     RemovalQuality.STANDARD ->
-                        PatchMatchParams(PATCH_SIZE, STANDARD_EM_ITERATIONS, STANDARD_PM_ITERATIONS)
+                        PatchMatchParams(PATCH_SIZE_STANDARD, STANDARD_EM_ITERATIONS, STANDARD_PM_ITERATIONS)
                     RemovalQuality.ADVANCED ->
-                        PatchMatchParams(PATCH_SIZE, ADVANCED_EM_ITERATIONS, ADVANCED_PM_ITERATIONS)
+                        PatchMatchParams(PATCH_SIZE_ADVANCED, ADVANCED_EM_ITERATIONS, ADVANCED_PM_ITERATIONS)
                 }
             InpaintTarget.VIDEO ->
                 when (quality) {
                     RemovalQuality.STANDARD ->
-                        PatchMatchParams(PATCH_SIZE, VIDEO_STANDARD_EM_ITERATIONS, VIDEO_STANDARD_PM_ITERATIONS)
+                        PatchMatchParams(PATCH_SIZE_STANDARD, VIDEO_STANDARD_EM_ITERATIONS, VIDEO_STANDARD_PM_ITERATIONS)
                     RemovalQuality.ADVANCED ->
-                        PatchMatchParams(PATCH_SIZE, VIDEO_ADVANCED_EM_ITERATIONS, VIDEO_ADVANCED_PM_ITERATIONS)
+                        PatchMatchParams(PATCH_SIZE_STANDARD, VIDEO_ADVANCED_EM_ITERATIONS, VIDEO_ADVANCED_PM_ITERATIONS)
                 }
         }
 
@@ -107,15 +107,16 @@ object RemovalInpaintTuning {
         val pmIterations: Int,
     )
 
-    private const val PATCH_SIZE = 7
+    private const val PATCH_SIZE_STANDARD = 7
+    private const val PATCH_SIZE_ADVANCED = 9
     private const val STANDARD_EM_ITERATIONS = 1
     private const val STANDARD_PM_ITERATIONS = 3
     private const val ADVANCED_EM_ITERATIONS = 2
-    private const val ADVANCED_PM_ITERATIONS = 6
+    private const val ADVANCED_PM_ITERATIONS = 8
     private const val VIDEO_STANDARD_EM_ITERATIONS = 1
     private const val VIDEO_STANDARD_PM_ITERATIONS = 2
     private const val VIDEO_ADVANCED_EM_ITERATIONS = 1
-    private const val VIDEO_ADVANCED_PM_ITERATIONS = 4
+    private const val VIDEO_ADVANCED_PM_ITERATIONS = 6
 
     private const val IMAGE_MARGIN_RATIO = 0.5f
     private const val VIDEO_MARGIN_RATIO = 0.35f
@@ -124,16 +125,16 @@ object RemovalInpaintTuning {
     private const val VIDEO_MARGIN_MIN_PX = 32
     private const val VIDEO_MARGIN_MAX_PX = 128
 
-    private const val FEATHER_RADIUS_SCALE = 0.012
-    private const val FEATHER_IMAGE_EDGE_RATIO = 0.008f
+    private const val FEATHER_RADIUS_SCALE = 0.018
+    private const val FEATHER_IMAGE_EDGE_RATIO = 0.01f
     private const val FEATHER_IMAGE_EDGE_DIVISOR = 80
-    private const val FEATHER_MIN_PX = 3
-    private const val FEATHER_ABSOLUTE_MAX_PX = 32
+    private const val FEATHER_MIN_PX = 4
+    private const val FEATHER_ABSOLUTE_MAX_PX = 40
 
     private const val LARGE_REGION_AREA_PX = 80_000L
     private const val LARGE_MASK_PIXELS = 12_000
     private const val LARGE_REGION_EXTRA_EM = 1
     private const val LARGE_REGION_EXTRA_PM = 2
-    private const val MAX_EM_ITERATIONS = 3
-    private const val MAX_PM_ITERATIONS = 10
+    private const val MAX_EM_ITERATIONS = 4
+    private const val MAX_PM_ITERATIONS = 12
 }

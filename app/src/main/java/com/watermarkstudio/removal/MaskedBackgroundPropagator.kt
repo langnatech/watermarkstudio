@@ -228,11 +228,32 @@ object MaskedBackgroundPropagator {
         val cellTints: Array<Rgb?>,
         val globalFallback: Rgb,
     ) {
+        /**
+         * Bilinear sample over the tint grid so neighboring cells do not form hard color bands.
+         */
         fun tintAt(x: Int, y: Int, width: Int, height: Int): Rgb {
-            val col = ((x * cols) / width).coerceIn(0, cols - 1)
-            val row = ((y * rows) / height).coerceIn(0, rows - 1)
-            return cellTints[row * cols + col] ?: globalFallback
+            if (cols <= 0 || rows <= 0 || width <= 0 || height <= 0) return globalFallback
+            val fx = if (width <= 1) 0f else (x.toFloat() / (width - 1).coerceAtLeast(1)) * (cols - 1).coerceAtLeast(0)
+            val fy = if (height <= 1) 0f else (y.toFloat() / (height - 1).coerceAtLeast(1)) * (rows - 1).coerceAtLeast(0)
+            val col0 = fx.toInt().coerceIn(0, cols - 1)
+            val row0 = fy.toInt().coerceIn(0, rows - 1)
+            val col1 = (col0 + 1).coerceAtMost(cols - 1)
+            val row1 = (row0 + 1).coerceAtMost(rows - 1)
+            val tx = (fx - col0).coerceIn(0f, 1f)
+            val ty = (fy - row0).coerceIn(0f, 1f)
+            val c00 = cellTints[row0 * cols + col0] ?: globalFallback
+            val c10 = cellTints[row0 * cols + col1] ?: globalFallback
+            val c01 = cellTints[row1 * cols + col0] ?: globalFallback
+            val c11 = cellTints[row1 * cols + col1] ?: globalFallback
+            return lerpRgb(lerpRgb(c00, c10, tx), lerpRgb(c01, c11, tx), ty)
         }
+
+        private fun lerpRgb(a: Rgb, b: Rgb, t: Float): Rgb =
+            Rgb(
+                a.r + (b.r - a.r) * t,
+                a.g + (b.g - a.g) * t,
+                a.b + (b.b - a.b) * t,
+            )
     }
 
     internal fun applyInteriorAlphaUnmix(

@@ -90,24 +90,19 @@ object TemporalMedianProcessor {
         }
 
         val medianArgb = IntArray(roiPixels)
-        val rs = IntArray(n)
-        val gs = IntArray(n)
-        val bs = IntArray(n)
+        val sampleBuf = IntArray(n)
         for (idx in 0 until roiPixels) {
             val x = region.left + (idx % region.width)
             val y = region.top + (idx / region.width)
-            if (maskBytes[y * frameWidth + x].toInt() == 0) continue
-            for (fi in 0 until n) {
-                val c = stack[fi][idx]
-                rs[fi] = (c shr 16) and 0xFF
-                gs[fi] = (c shr 8) and 0xFF
-                bs[fi] = c and 0xFF
+            if ((maskBytes[y * frameWidth + x].toInt() and 0xFF) <
+                com.watermarkstudio.removal.mask.MaskGenerator.INPAINT_CORE_THRESHOLD
+            ) {
+                continue
             }
-            rs.sort(0, n)
-            gs.sort(0, n)
-            bs.sort(0, n)
-            val mid = n / 2
-            medianArgb[idx] = (0xFF shl 24) or (rs[mid] shl 16) or (gs[mid] shl 8) or bs[mid]
+            for (fi in 0 until n) {
+                sampleBuf[fi] = stack[fi][idx]
+            }
+            medianArgb[idx] = TemporalVectorMedian.selectArgb(sampleBuf, n, alpha = 0xFF)
         }
 
         return frames.mapIndexed { _, original ->
@@ -115,7 +110,9 @@ object TemporalMedianProcessor {
             var idx = 0
             for (y in region.top until region.bottom) {
                 for (x in region.left until region.right) {
-                    if (maskBytes[y * frameWidth + x].toInt() != 0) {
+                    if ((maskBytes[y * frameWidth + x].toInt() and 0xFF) >=
+                        com.watermarkstudio.removal.mask.MaskGenerator.INPAINT_CORE_THRESHOLD
+                    ) {
                         out.setPixel(x, y, medianArgb[idx])
                     }
                     idx++

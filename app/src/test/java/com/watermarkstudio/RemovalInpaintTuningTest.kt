@@ -64,7 +64,9 @@ class RemovalInpaintTuningTest {
                 imageShortEdge = 240,
             )
         assertTrue(image.pmIterations > video.pmIterations)
-        assertEquals(4, video.pmIterations)
+        assertEquals(6, video.pmIterations)
+        assertEquals(9, image.patchSize)
+        assertEquals(7, video.patchSize)
     }
 
     @Test

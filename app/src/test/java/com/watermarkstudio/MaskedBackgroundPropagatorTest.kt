@@ -163,6 +163,19 @@ class MaskedBackgroundPropagatorTest {
     }
 
     @Test
+    fun localTintGrid_bilinearBlendsBetweenCells() {
+        val grid =
+            MaskedBackgroundPropagator.LocalTintGrid(
+                cols = 2,
+                rows = 1,
+                cellTints = arrayOf(Rgb(0f, 0f, 0f), Rgb(200f, 0f, 0f)),
+                globalFallback = Rgb(100f, 100f, 100f),
+            )
+        val mid = grid.tintAt(50, 0, width = 100, height = 1)
+        assertTrue(mid.r in 80f..120f)
+    }
+
+    @Test
     fun applyBoundaryAlphaUnmix_pullsBoundaryTowardBackground() {
         val width = 30
         val height = 30

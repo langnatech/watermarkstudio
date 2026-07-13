@@ -109,7 +109,9 @@ object OpticalFlowRecoveryProcessor {
         var idx = 0
         for (y in region.top until region.bottom) {
             for (x in region.left until region.right) {
-                if (maskBytes[y * frameWidth + x].toInt() == 0) {
+                if ((maskBytes[y * frameWidth + x].toInt() and 0xFF) <
+                    com.watermarkstudio.removal.mask.MaskGenerator.INPAINT_CORE_THRESHOLD
+                ) {
                     idx++
                     continue
                 }
@@ -203,22 +205,23 @@ object OpticalFlowRecoveryProcessor {
 
     /** Returns packed BGR per ROI pixel (-1 = invalid) and count of valid pixels. */
     private fun warpRoi(
-        prevGray: Mat,
+        neighborGray: Mat,
         currGray: Mat,
-        prevBgr: Mat,
+        neighborBgr: Mat,
         region: com.watermarkstudio.util.RemovalRegion,
         algorithm: FlowAlgorithm,
     ): Pair<DoubleArray, Int>? {
-        if (prevGray.cols() != currGray.cols() || prevGray.rows() != currGray.rows()) {
+        if (neighborGray.cols() != currGray.cols() || neighborGray.rows() != currGray.rows()) {
             return null
         }
         val flow = Mat()
         return try {
+            // Backward warp: flow at curr(x,y) points into the neighbor frame.
             when (algorithm) {
                 FlowAlgorithm.FARNEBACK ->
                     Video.calcOpticalFlowFarneback(
-                        prevGray,
                         currGray,
+                        neighborGray,
                         flow,
                         0.5,
                         3,
@@ -230,8 +233,8 @@ object OpticalFlowRecoveryProcessor {
                     )
                 FlowAlgorithm.PYRAMID_LK ->
                     Video.calcOpticalFlowFarneback(
-                        prevGray,
                         currGray,
+                        neighborGray,
                         flow,
                         0.5,
                         2,
@@ -250,22 +253,28 @@ object OpticalFlowRecoveryProcessor {
             for (y in region.top until region.bottom) {
                 for (x in region.left until region.right) {
                     total++
-                    val fx = flow.get(y, x)[0]
-                    val fy = flow.get(y, x)[1]
+                    val flowVec = flow.get(y, x)
+                    if (flowVec == null || flowVec.isEmpty()) {
+                        invalid++
+                        idx++
+                        continue
+                    }
+                    val fx = flowVec[0]
+                    val fy = flowVec[1]
                     if (kotlin.math.abs(fx) > MAX_FLOW_MAGNITUDE || kotlin.math.abs(fy) > MAX_FLOW_MAGNITUDE) {
                         invalid++
                         idx++
                         continue
                     }
-                    val sx = (x + fx).toInt()
-                    val sy = (y + fy).toInt()
-                    if (sx in 0 until prevBgr.cols() && sy in 0 until prevBgr.rows()) {
-                        val px = prevBgr.get(sy, sx)
-                        packed[idx * 3] = px[0]
-                        packed[idx * 3 + 1] = px[1]
-                        packed[idx * 3 + 2] = px[2]
-                    } else {
+                    val sx = x + fx
+                    val sy = y + fy
+                    val sample = bilinearBgr(neighborBgr, sx, sy)
+                    if (sample == null) {
                         invalid++
+                    } else {
+                        packed[idx * 3] = sample[0]
+                        packed[idx * 3 + 1] = sample[1]
+                        packed[idx * 3 + 2] = sample[2]
                     }
                     idx++
                 }
@@ -281,6 +290,29 @@ object OpticalFlowRecoveryProcessor {
         } finally {
             flow.release()
         }
+    }
+
+    private fun bilinearBgr(bgr: Mat, x: Double, y: Double): DoubleArray? {
+        val maxX = (bgr.cols() - 1).coerceAtLeast(0)
+        val maxY = (bgr.rows() - 1).coerceAtLeast(0)
+        if (x < 0.0 || y < 0.0 || x > maxX || y > maxY) return null
+        val x0 = x.toInt().coerceIn(0, maxX)
+        val y0 = y.toInt().coerceIn(0, maxY)
+        val x1 = (x0 + 1).coerceAtMost(maxX)
+        val y1 = (y0 + 1).coerceAtMost(maxY)
+        val tx = (x - x0).coerceIn(0.0, 1.0)
+        val ty = (y - y0).coerceIn(0.0, 1.0)
+        val p00 = bgr.get(y0, x0)
+        val p10 = bgr.get(y0, x1)
+        val p01 = bgr.get(y1, x0)
+        val p11 = bgr.get(y1, x1)
+        val out = DoubleArray(3)
+        for (c in 0 until 3) {
+            val top = p00[c] * (1.0 - tx) + p10[c] * tx
+            val bottom = p01[c] * (1.0 - tx) + p11[c] * tx
+            out[c] = top * (1.0 - ty) + bottom * ty
+        }
+        return out
     }
 
     private fun createMaskBytes(width: Int, height: Int, config: WatermarkConfig): ByteArray {

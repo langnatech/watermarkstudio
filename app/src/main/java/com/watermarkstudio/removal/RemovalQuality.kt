@@ -5,7 +5,7 @@ import android.content.Context
 enum class RemovalQuality {
     /** Brush mask + temporal median prefill + PatchMatch refine; video keeps source audio. */
     STANDARD,
-    /** 7-frame temporal fusion + optical-flow prefill + PatchMatch refine; video keeps source audio. */
+    /** Optical-flow prefill (prev+next) with median fallback + PatchMatch refine; video keeps source audio. */
     ADVANCED,
 }
 

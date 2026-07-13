@@ -9,6 +9,8 @@ import com.watermarkstudio.removal.RemovalQuality
 
 /**
  * Decode → temporal prefill → PatchMatch refine → encode one frame at a time.
+ *
+ * Uses a one-frame delay so ADVANCED optical-flow prefill can receive the next frame as lookahead.
  */
 object StreamingVideoRemovalEngine {
 
@@ -41,7 +43,7 @@ object StreamingVideoRemovalEngine {
                 preferMediaCodec,
             ) ?: return null
 
-        var curr: Bitmap? = null
+        var pending: Bitmap? = null
         var frameCount = 0
         var failedFrames = 0
         var outputFps = sampling.targetFps.toFloat()
@@ -54,33 +56,37 @@ object StreamingVideoRemovalEngine {
                 val first = src.nextFrame() ?: return null
                 val preparedFirst = VideoFrameUtils.prepareForVideoEncode(first)
                 if (preparedFirst !== first) first.recycle()
-                curr = preparedFirst
+                pending = preparedFirst
                 maskCache = FrameInpaintBlender.prepareMask(preparedFirst.width, preparedFirst.height, config)
                 val encoder =
-                    IncrementalVideoEncoder(silentOutputFile, curr.width, curr.height, src.fps)
+                    IncrementalVideoEncoder(silentOutputFile, pending!!.width, pending!!.height, src.fps)
                 try {
                     while (true) {
+                        val lookahead = src.nextFrame()
                         val processResult =
                             processFrame(
-                                curr!!,
+                                pending!!,
                                 config,
                                 quality,
                                 maskCache!!,
                                 frameWindow,
+                                lookahead,
                             )
                         val processed =
                             processResult.bitmap
                                 ?: run {
                                     failedFrames++
                                     if (shouldAbortExport(frameCount, failedFrames)) {
+                                        lookahead?.recycle()
                                         return null
                                     }
                                     VideoFrameUtils.prepareForVideoEncode(
-                                        curr!!.copy(Bitmap.Config.ARGB_8888, false),
+                                        pending!!.copy(Bitmap.Config.ARGB_8888, false),
                                     )
                                 }
                         if (!encoder.submitFrame(processed)) {
                             processed.recycle()
+                            lookahead?.recycle()
                             return null
                         }
                         processed.recycle()
@@ -88,12 +94,12 @@ object StreamingVideoRemovalEngine {
                         progress?.report(
                             0.35f + 0.4f * frameCount / sampling.maxFrames.coerceAtLeast(1),
                         )
-                        curr?.recycle()
-                        val next = src.nextFrame()
-                        if (next == null) {
+                        pending?.recycle()
+                        pending = null
+                        if (lookahead == null) {
                             break
                         }
-                        curr = next
+                        pending = lookahead
                     }
                     if (!encoder.finish()) return null
                 } finally {
@@ -106,7 +112,7 @@ object StreamingVideoRemovalEngine {
             return StreamingResult(silentOutputFile, frameCount, outputFps)
         } catch (t: Throwable) {
             t.printStackTrace()
-            curr?.recycle()
+            pending?.recycle()
             return null
         } finally {
             frameWindow.release()
@@ -122,8 +128,22 @@ object StreamingVideoRemovalEngine {
         quality: RemovalQuality,
         maskCache: FrameInpaintBlender.CachedMask,
         frameWindow: TemporalPrefillProcessor.SlidingWindow,
+        lookahead: Bitmap?,
     ): FrameProcessResult {
         val base = VideoFrameUtils.prepareForVideoEncode(curr)
+        var ownedLookahead: Bitmap? = null
+        val lookaheadForPrefill =
+            lookahead?.let { frame ->
+                val prepared = VideoFrameUtils.prepareForVideoEncode(frame)
+                val aligned = VideoFrameUtils.ensureDimensions(prepared, base.width, base.height)
+                if (prepared !== aligned && prepared !== frame) {
+                    prepared.recycle()
+                }
+                if (aligned !== frame) {
+                    ownedLookahead = aligned
+                }
+                aligned
+            }
         return try {
             val windowCopy = base.copy(Bitmap.Config.ARGB_8888, false)
             frameWindow.push(windowCopy)
@@ -133,6 +153,7 @@ object StreamingVideoRemovalEngine {
                     frameWindow.snapshot(),
                     config,
                     quality,
+                    lookahead = lookaheadForPrefill,
                 )
             val refined = FrameInpaintBlender.refineFrame(prefilled, quality, maskCache)
             if (prefilled !== base && prefilled !== refined && !prefilled.isRecycled) {
@@ -146,6 +167,7 @@ object StreamingVideoRemovalEngine {
             FrameProcessResult(null)
         } finally {
             if (base !== curr) base.recycle()
+            ownedLookahead?.takeIf { !it.isRecycled }?.recycle()
         }
     }
 

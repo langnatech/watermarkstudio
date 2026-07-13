@@ -5,7 +5,7 @@ import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.removal.mask.MaskGenerator
 
 /**
- * Streaming-friendly ROI temporal median over a small sliding window (no full-video buffer).
+ * Streaming-friendly ROI temporal vector-median over a small sliding window (no full-video buffer).
  */
 object RoiWindowMedianProcessor {
 
@@ -36,17 +36,16 @@ object RoiWindowMedianProcessor {
                 }
             }
         }
+        val sampleBuf = IntArray(window.size)
         var idx = 0
         for (y in region.top until region.bottom) {
             for (x in region.left until region.right) {
-                if (maskBytes[y * width + x].toInt() != 0) {
-                    val rs = (0 until window.size).map { (roiPixels[it][idx] shr 16) and 0xFF }.sorted()
-                    val gs = (0 until window.size).map { (roiPixels[it][idx] shr 8) and 0xFF }.sorted()
-                    val bs = (0 until window.size).map { roiPixels[it][idx] and 0xFF }.sorted()
-                    val mid = window.size / 2
-                    val a = (current.getPixel(x, y) shr 24) and 0xFF
-                    val color = (a shl 24) or (rs[mid] shl 16) or (gs[mid] shl 8) or bs[mid]
-                    out.setPixel(x, y, color)
+                if ((maskBytes[y * width + x].toInt() and 0xFF) >= MaskGenerator.INPAINT_CORE_THRESHOLD) {
+                    for (i in window.indices) {
+                        sampleBuf[i] = roiPixels[i][idx]
+                    }
+                    val a = (current.getPixel(x, y) ushr 24) and 0xFF
+                    out.setPixel(x, y, TemporalVectorMedian.selectArgb(sampleBuf, window.size, a))
                 }
                 idx++
             }

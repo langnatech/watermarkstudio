@@ -41,6 +41,7 @@ firebaseBom = "34.12.0"
 secretsGradlePlugin = "2.0.1"
 playServicesAds = "23.1.0"
 userMessagingPlatform = "3.1.0"
+onnxRuntime = "1.20.0"
 opencv = "4.12.0"
 billing = "7.0.0"
 fragment = "1.8.5"
@@ -104,6 +105,7 @@ firebase-ai = { group = "com.google.firebase", name = "firebase-ai" }
 play-services-ads = { group = "com.google.android.gms", name = "play-services-ads", version.ref = "playServicesAds" }
 user-messaging-platform = { group = "com.google.android.ump", name = "user-messaging-platform", version.ref = "userMessagingPlatform" }
 opencv = { group = "org.opencv", name = "opencv", version.ref = "opencv" }
+onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxRuntime" }
 android-billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
 androidx-fragment = { group = "androidx.fragment", name = "fragment", version.ref = "fragment" }
 androidx-emoji2-bundled = { group = "androidx.emoji2", name = "emoji2-bundled", version.ref = "emoji2Bundled" }

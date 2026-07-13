@@ -52,9 +52,11 @@ import com.watermarkstudio.model.MediaType
 import com.watermarkstudio.model.MediaItem
 import com.watermarkstudio.removal.preview.RemovalPreviewHelper
 import com.watermarkstudio.removal.video.VideoFrameExtractor
+import com.watermarkstudio.model.RemovalBrushTool
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.model.WatermarkFontFamily
 import com.watermarkstudio.model.WatermarkType
+import com.watermarkstudio.model.dropLastStrokeOrBatch
 import com.watermarkstudio.ui.components.watermarkDisplayText
 import com.watermarkstudio.ui.components.WatermarkOutlinedText
 import com.watermarkstudio.ui.components.DraggableWatermarkOverlay
@@ -177,6 +179,13 @@ fun EditorScreen(
 
     var lastHandledExportSuccessId by remember { mutableLongStateOf(0L) }
 
+    // 进入编辑页即预加载插屏，与导出成功时的 show 解耦，避免「要展示瞬间才 load」错失曝光
+    LaunchedEffect(uiState.isPremium) {
+        if (!uiState.isPremium) {
+            com.watermarkstudio.util.InterstitialAdLoader.preload(context.applicationContext)
+        }
+    }
+
     LaunchedEffect(uiState.exportSuccessBatchId) {
         val batchId = uiState.exportSuccessBatchId
         if (batchId > 0L && batchId != lastHandledExportSuccessId && !uiState.isProcessing) {
@@ -185,6 +194,12 @@ fun EditorScreen(
             if (!uiState.isPremium) {
                 val activity = context as? android.app.Activity
                 if (activity != null) {
+                    if (!com.watermarkstudio.util.InterstitialAdLoader.isAdReady()) {
+                        android.util.Log.w(
+                            "EditorScreen",
+                            "Export success but interstitial not ready; showAd will skip impression and preload."
+                        )
+                    }
                     com.watermarkstudio.util.InterstitialAdLoader.showAd(activity) {
                         coroutineScope.launch {
                             snackbarHostState.showSnackbar(successMessage)
@@ -1194,54 +1209,105 @@ fun PreviewContainer(
 ) {
     val context = LocalContext.current
     val removeConfig = configs.firstOrNull { it.type == WatermarkType.REMOVE }
+    var baseBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var previewLoading by remember { mutableStateOf(false) }
     var mediaWidthPx by remember(item.uri) { mutableStateOf<Float?>(null) }
     var mediaHeightPx by remember(item.uri) { mutableStateOf<Float?>(null) }
 
     LaunchedEffect(item.uri, item.type) {
-        val dims = loadMediaPreviewDimensions(context, item.uri, item.type)
-        mediaWidthPx = dims?.widthPx
-        mediaHeightPx = dims?.heightPx
+        val previousPreview = previewBitmap
+        val previousBase = baseBitmap
+        previewBitmap = null
+        baseBitmap = null
+        if (previousPreview != null && previousPreview !== previousBase) {
+            previousPreview.recycle()
+        }
+        previousBase?.recycle()
+        previewLoading = true
+        val loaded =
+            RemovalPreviewHelper.loadBasePreview(
+                context,
+                item.uri,
+                isVideo = item.type == MediaType.VIDEO,
+            )
+        baseBitmap = loaded
+        mediaWidthPx = loaded?.width?.toFloat()
+        mediaHeightPx = loaded?.height?.toFloat()
+        previewLoading = false
     }
 
-    LaunchedEffect(item.uri, item.type, removeConfig?.removalStrokes, removeConfig?.brushRadiusPct, isPremium) {
+    LaunchedEffect(
+        baseBitmap,
+        removeConfig?.removalStrokes,
+        removeConfig?.maskErodePx,
+        isPremium,
+        item.type,
+    ) {
+        val base = baseBitmap ?: return@LaunchedEffect
         if (!removeConfig?.removalStrokes.isNullOrEmpty()) {
             delay(RemovalPreviewHelper.PREVIEW_INPAINT_DEBOUNCE_MS)
         }
-        previewBitmap?.recycle()
-        previewBitmap = null
         previewLoading = true
-        previewBitmap =
-            when {
-                item.type == MediaType.IMAGE && removeConfig != null ->
-                    RemovalPreviewHelper.renderPreview(context, item.uri, removeConfig, isPremium)
-                item.type == MediaType.VIDEO && removeConfig != null ->
-                    RemovalPreviewHelper.renderVideoPreview(
-                        context,
-                        item.uri,
-                        removeConfig,
-                        isPremium,
-                    )
-                item.type == MediaType.VIDEO ->
-                    withContext(Dispatchers.IO) {
-                        VideoFrameExtractor.loadPreviewFrame(context, item.uri)
+        val previous = previewBitmap
+        val next =
+            if (removeConfig == null || removeConfig.removalStrokes.isEmpty()) {
+                null
+            } else {
+                withContext(Dispatchers.Default) {
+                    if (!com.watermarkstudio.removal.OpenCvBootstrap.ensureLoaded(context)) {
+                        return@withContext null
                     }
-                else -> null
+                    val exportMaxDim =
+                        if (item.type == MediaType.VIDEO) {
+                            if (isPremium) {
+                                com.watermarkstudio.removal.RemovalExportLimits.PREMIUM_VIDEO_MAX_DIM
+                            } else {
+                                com.watermarkstudio.removal.RemovalExportLimits.FREE_VIDEO_MAX_DIM
+                            }
+                        } else {
+                            com.watermarkstudio.removal.RemovalExportLimits.imageExportMaxDim(isPremium)
+                        }
+                    val work = base.copy(Bitmap.Config.ARGB_8888, false)
+                    RemovalPreviewHelper.renderOnBitmap(
+                        context = context,
+                        bitmap = work,
+                        config = removeConfig,
+                        isPremium = isPremium,
+                        target =
+                            if (item.type == MediaType.VIDEO) {
+                                com.watermarkstudio.removal.InpaintTarget.VIDEO
+                            } else {
+                                com.watermarkstudio.removal.InpaintTarget.IMAGE
+                            },
+                        exportMaxDim = exportMaxDim,
+                        recycleInput = true,
+                    )
+                }
             }
+        previewBitmap = next
+        if (previous != null && previous !== base && previous !== next) {
+            previous.recycle()
+        }
         previewLoading = false
     }
     DisposableEffect(Unit) {
         onDispose {
-            previewBitmap?.recycle()
+            val preview = previewBitmap
+            val base = baseBitmap
             previewBitmap = null
+            baseBitmap = null
+            if (preview != null && preview !== base) preview.recycle()
+            base?.recycle()
         }
     }
 
+    val displayBitmap = previewBitmap ?: baseBitmap
+
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        if (previewBitmap != null) {
+        if (displayBitmap != null) {
             Image(
-                bitmap = previewBitmap!!.asImageBitmap(),
+                bitmap = displayBitmap.asImageBitmap(),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
@@ -1266,7 +1332,8 @@ fun PreviewContainer(
                 if (config.type == WatermarkType.REMOVE) {
                     RemovalBrushOverlay(
                         config = config,
-                        previewBitmap = previewBitmap,
+                        previewBitmap = displayBitmap,
+                        sourceBitmap = baseBitmap,
                         mediaWidthPx = mediaWidthPx,
                         mediaHeightPx = mediaHeightPx,
                         brushEnabled = !previewLoading && mediaWidthPx != null && mediaHeightPx != null,
@@ -1370,27 +1437,164 @@ private val watermarkTextColorPresets =
 @Composable
 fun RemovalBrushControls(config: WatermarkConfig, onUpdate: (WatermarkConfig) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            FilterChip(
+                selected = config.brushTool == RemovalBrushTool.PAINT,
+                onClick = { onUpdate(config.copy(brushTool = RemovalBrushTool.PAINT)) },
+                label = { Text(stringResource(R.string.remove_brush_mode_paint), fontSize = 11.sp) },
+                modifier = Modifier.weight(1f),
+            )
+            FilterChip(
+                selected = config.brushTool == RemovalBrushTool.ERASER,
+                onClick = { onUpdate(config.copy(brushTool = RemovalBrushTool.ERASER)) },
+                label = { Text(stringResource(R.string.remove_brush_mode_eraser), fontSize = 11.sp) },
+                modifier = Modifier.weight(1f),
+            )
+            FilterChip(
+                selected = config.brushTool == RemovalBrushTool.SMART_SELECT,
+                onClick = { onUpdate(config.copy(brushTool = RemovalBrushTool.SMART_SELECT)) },
+                label = { Text(stringResource(R.string.remove_brush_mode_smart), fontSize = 11.sp) },
+                modifier = Modifier.weight(1f),
+            )
+        }
         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
             Text(
                 stringResource(R.string.remove_brush_size_format, config.brushRadiusPct),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF10B981),
+                color =
+                    when (config.brushTool) {
+                        RemovalBrushTool.ERASER -> Color(0xFFF59E0B)
+                        RemovalBrushTool.SMART_SELECT -> Color(0xFF38BDF8)
+                        RemovalBrushTool.PAINT -> Color(0xFF10B981)
+                    },
+            )
+            Text(
+                stringResource(R.string.remove_mask_erode_format, config.maskErodePx),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF94A3B8),
             )
         }
-        Slider(
-            value = config.brushRadiusPct,
-            onValueChange = { onUpdate(config.copy(brushRadiusPct = it)) },
-            valueRange = WatermarkConfig.MIN_BRUSH_RADIUS_PCT..WatermarkConfig.MAX_BRUSH_RADIUS_PCT,
-            colors =
-                SliderDefaults.colors(
-                    thumbColor = Color.White,
-                    activeTrackColor = Color(0xFF10B981),
-                    inactiveTrackColor = Color.White.copy(alpha = 0.1f),
-                ),
-        )
+        if (config.brushTool == RemovalBrushTool.SMART_SELECT) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                FilterChip(
+                    selected = !config.smartSelectSubtract,
+                    onClick = { onUpdate(config.copy(smartSelectSubtract = false)) },
+                    label = {
+                        Text(stringResource(R.string.remove_smart_mode_add), fontSize = 11.sp)
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                FilterChip(
+                    selected = config.smartSelectSubtract,
+                    onClick = { onUpdate(config.copy(smartSelectSubtract = true)) },
+                    label = {
+                        Text(stringResource(R.string.remove_smart_mode_subtract), fontSize = 11.sp)
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Text(
+                stringResource(R.string.remove_smart_tolerance_format, config.smartSelectTolerance),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color =
+                    if (config.smartSelectSubtract) {
+                        Color(0xFFF59E0B)
+                    } else {
+                        Color(0xFF38BDF8)
+                    },
+            )
+            Slider(
+                value = config.smartSelectTolerance.toFloat(),
+                onValueChange = {
+                    onUpdate(
+                        config.copy(
+                            smartSelectTolerance =
+                                it.toInt().coerceIn(
+                                    WatermarkConfig.MIN_SMART_SELECT_TOLERANCE,
+                                    WatermarkConfig.MAX_SMART_SELECT_TOLERANCE,
+                                ),
+                        ),
+                    )
+                },
+                valueRange =
+                    WatermarkConfig.MIN_SMART_SELECT_TOLERANCE.toFloat()..
+                        WatermarkConfig.MAX_SMART_SELECT_TOLERANCE.toFloat(),
+                colors =
+                    SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor =
+                            if (config.smartSelectSubtract) {
+                                Color(0xFFF59E0B)
+                            } else {
+                                Color(0xFF38BDF8)
+                            },
+                        inactiveTrackColor = Color.White.copy(alpha = 0.1f),
+                    ),
+            )
+        } else {
+            Slider(
+                value = config.brushRadiusPct,
+                onValueChange = { onUpdate(config.copy(brushRadiusPct = it)) },
+                valueRange = WatermarkConfig.MIN_BRUSH_RADIUS_PCT..WatermarkConfig.MAX_BRUSH_RADIUS_PCT,
+                colors =
+                    SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor =
+                            if (config.brushTool == RemovalBrushTool.ERASER) {
+                                Color(0xFFF59E0B)
+                            } else {
+                                Color(0xFF10B981)
+                            },
+                        inactiveTrackColor = Color.White.copy(alpha = 0.1f),
+                    ),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = {
+                    onUpdate(
+                        config.copy(
+                            maskErodePx = (config.maskErodePx + 1).coerceAtMost(WatermarkConfig.MAX_MASK_ERODE_PX),
+                        ),
+                    )
+                },
+                enabled = config.maskErodePx < WatermarkConfig.MAX_MASK_ERODE_PX,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.remove_mask_shrink))
+            }
+            OutlinedButton(
+                onClick = {
+                    onUpdate(config.copy(maskErodePx = (config.maskErodePx - 1).coerceAtLeast(0)))
+                },
+                enabled = config.maskErodePx > 0,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.remove_mask_expand))
+            }
+        }
         Text(
-            stringResource(R.string.editor_remove_brush_hint),
+            stringResource(
+                when (config.brushTool) {
+                    RemovalBrushTool.SMART_SELECT ->
+                        if (config.smartSelectSubtract) {
+                            R.string.editor_remove_smart_subtract_hint
+                        } else {
+                            R.string.editor_remove_smart_hint
+                        }
+                    RemovalBrushTool.ERASER -> R.string.editor_remove_eraser_hint
+                    RemovalBrushTool.PAINT -> R.string.editor_remove_brush_hint
+                },
+            ),
             color = Color(0xFF64748B),
             fontSize = 11.sp,
             lineHeight = 16.sp,
@@ -1398,7 +1602,9 @@ fun RemovalBrushControls(config: WatermarkConfig, onUpdate: (WatermarkConfig) ->
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
                 onClick = {
-                    onUpdate(config.copy(removalStrokes = config.removalStrokes.dropLast(1)))
+                    onUpdate(
+                        config.copy(removalStrokes = config.removalStrokes.dropLastStrokeOrBatch()),
+                    )
                 },
                 enabled = config.removalStrokes.isNotEmpty(),
                 modifier = Modifier.weight(1f),
@@ -1406,8 +1612,10 @@ fun RemovalBrushControls(config: WatermarkConfig, onUpdate: (WatermarkConfig) ->
                 Text(stringResource(R.string.remove_brush_undo))
             }
             OutlinedButton(
-                onClick = { onUpdate(config.copy(removalStrokes = emptyList())) },
-                enabled = config.removalStrokes.isNotEmpty(),
+                onClick = {
+                    onUpdate(config.copy(removalStrokes = emptyList(), maskErodePx = 0))
+                },
+                enabled = config.removalStrokes.isNotEmpty() || config.maskErodePx > 0,
                 modifier = Modifier.weight(1f),
             ) {
                 Text(stringResource(R.string.remove_brush_clear))

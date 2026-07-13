@@ -68,6 +68,13 @@
 }
 -dontwarn org.opencv.**
 
+# ONNX Runtime (on-device LaMa)
+-keep class ai.onnxruntime.** { *; }
+-keepclassmembers class ai.onnxruntime.** {
+    native <methods>;
+}
+-dontwarn ai.onnxruntime.**
+
 # All JNI entry points (removal_native + OpenCV)
 -keepclasseswithmembernames class * {
     native <methods>;

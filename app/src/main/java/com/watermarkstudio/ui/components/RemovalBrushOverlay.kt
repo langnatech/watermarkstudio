@@ -3,6 +3,7 @@ package com.watermarkstudio.ui.components
 import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -16,15 +17,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import com.watermarkstudio.model.RemovalBrushTool
 import com.watermarkstudio.model.RemovalStroke
 import com.watermarkstudio.model.RemovalStrokePoint
 import com.watermarkstudio.model.WatermarkConfig
 import com.watermarkstudio.removal.mask.BrushStrokeGeometry
+import com.watermarkstudio.removal.mask.RemovalSmartSelect
+import kotlin.math.roundToInt
 
 @Composable
 fun RemovalBrushOverlay(
     config: WatermarkConfig,
     previewBitmap: Bitmap?,
+    /** Original (non-inpainted) frame for smart-select color sampling; falls back to [previewBitmap]. */
+    sourceBitmap: Bitmap? = null,
     mediaWidthPx: Float?,
     mediaHeightPx: Float?,
     brushEnabled: Boolean,
@@ -33,17 +39,20 @@ fun RemovalBrushOverlay(
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
-    var currentPoints by remember(config.removalStrokes.size) { mutableStateOf<List<RemovalStrokePoint>>(emptyList()) }
+    val layoutBitmap = previewBitmap ?: sourceBitmap
+    var currentPoints by remember(config.removalStrokes.size, config.brushTool) {
+        mutableStateOf<List<RemovalStrokePoint>>(emptyList())
+    }
 
     BoxWithConstraints(modifier = modifier) {
         val canvasWidthPx = with(density) { maxWidth.toPx() }
         val canvasHeightPx = with(density) { maxHeight.toPx() }
         val contentSourceWidth =
-            previewBitmap?.width?.toFloat()
+            layoutBitmap?.width?.toFloat()
                 ?: mediaWidthPx
                 ?: return@BoxWithConstraints
         val contentSourceHeight =
-            previewBitmap?.height?.toFloat()
+            layoutBitmap?.height?.toFloat()
                 ?: mediaHeightPx
                 ?: return@BoxWithConstraints
         val contentRect =
@@ -57,9 +66,43 @@ fun RemovalBrushOverlay(
             }
 
         val canPaint = brushEnabled && isActiveLayer
+        val sampleBitmap = sourceBitmap ?: previewBitmap
         val gestureModifier =
-            if (canPaint) {
-                Modifier.pointerInput(contentRect, config.brushRadiusPct) {
+            if (!canPaint) {
+                Modifier
+            } else if (config.brushTool == RemovalBrushTool.SMART_SELECT) {
+                Modifier.pointerInput(
+                    contentRect,
+                    sampleBitmap,
+                    config.smartSelectTolerance,
+                    config.smartSelectSubtract,
+                ) {
+                    detectTapGestures { tap ->
+                        val point = tap.toStrokePoint(contentRect) ?: return@detectTapGestures
+                        val bitmap = sampleBitmap ?: return@detectTapGestures
+                        val seedX = (point.xPct / 100f * bitmap.width).roundToInt()
+                            .coerceIn(0, bitmap.width - 1)
+                        val seedY = (point.yPct / 100f * bitmap.height).roundToInt()
+                            .coerceIn(0, bitmap.height - 1)
+                        val batchId = System.nanoTime()
+                        val smartStrokes =
+                            RemovalSmartSelect.floodFillToStrokes(
+                                bitmap = bitmap,
+                                seedX = seedX,
+                                seedY = seedY,
+                                colorTolerance = config.smartSelectTolerance,
+                                batchId = batchId,
+                                isEraser = config.smartSelectSubtract,
+                            )
+                        if (smartStrokes.isNotEmpty()) {
+                            onConfigUpdate(
+                                config.copy(removalStrokes = config.removalStrokes + smartStrokes),
+                            )
+                        }
+                    }
+                }
+            } else {
+                Modifier.pointerInput(contentRect, config.brushRadiusPct, config.brushTool) {
                     detectDragGestures(
                         onDragStart = { start ->
                             start.toStrokePoint(contentRect)?.let { point ->
@@ -81,6 +124,7 @@ fun RemovalBrushOverlay(
                                                 RemovalStroke(
                                                     points = currentPoints,
                                                     radiusPct = config.brushRadiusPct,
+                                                    isEraser = config.brushTool == RemovalBrushTool.ERASER,
                                                 ),
                                     ),
                                 )
@@ -92,20 +136,22 @@ fun RemovalBrushOverlay(
                         },
                     )
                 }
-            } else {
-                Modifier
             }
 
         Canvas(modifier = Modifier.fillMaxSize().then(gestureModifier)) {
-            val strokeColor =
-                Color(0xFF10B981).copy(
-                    alpha = when {
-                        !brushEnabled -> 0.2f
-                        isActiveLayer -> 0.72f
-                        else -> 0.36f
-                    },
-                )
+            val paintAlpha =
+                when {
+                    !brushEnabled -> 0.2f
+                    isActiveLayer -> 0.72f
+                    else -> 0.36f
+                }
             config.removalStrokes.forEach { stroke ->
+                val strokeColor =
+                    if (stroke.isEraser) {
+                        Color(0xFFF59E0B).copy(alpha = paintAlpha * 0.85f)
+                    } else {
+                        Color(0xFF10B981).copy(alpha = paintAlpha)
+                    }
                 drawStroke(
                     stroke.points,
                     stroke.radiusPct,
@@ -115,14 +161,20 @@ fun RemovalBrushOverlay(
                     strokeColor,
                 )
             }
-            if (canPaint) {
+            if (canPaint && config.brushTool != RemovalBrushTool.SMART_SELECT) {
+                val activeColor =
+                    if (config.brushTool == RemovalBrushTool.ERASER) {
+                        Color(0xFFFBBF24).copy(alpha = 0.9f)
+                    } else {
+                        Color(0xFF34D399).copy(alpha = 0.86f)
+                    }
                 drawStroke(
                     currentPoints,
                     config.brushRadiusPct,
                     contentRect,
                     contentSourceWidth,
                     contentSourceHeight,
-                    Color(0xFF34D399).copy(alpha = 0.86f),
+                    activeColor,
                 )
             }
         }

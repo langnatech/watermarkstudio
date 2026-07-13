@@ -24,6 +24,23 @@ object RemovalPreviewHelper {
 
     const val PREVIEW_INPAINT_DEBOUNCE_MS = 400L
 
+    /** Undecorated preview-sized frame for display + smart-select color sampling. */
+    suspend fun loadBasePreview(
+        context: Context,
+        uri: Uri,
+        isVideo: Boolean,
+    ): Bitmap? = withContext(Dispatchers.IO) {
+        if (isVideo) {
+            VideoFrameExtractor.loadPreviewFrame(
+                context,
+                uri,
+                RemovalExportLimits.PREVIEW_MAX_DIM,
+            )
+        } else {
+            decodeImagePreview(context, uri)
+        }
+    }
+
     suspend fun renderPreview(
         context: Context,
         uri: Uri,
@@ -32,23 +49,9 @@ object RemovalPreviewHelper {
     ): Bitmap? = withContext(Dispatchers.Default) {
         if (!OpenCvBootstrap.ensureLoaded(context)) return@withContext null
         val exportMaxDim = RemovalExportLimits.imageExportMaxDim(isPremium)
-        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        context.contentResolver.openInputStream(uri)?.use {
-            BitmapFactory.decodeStream(it, null, options)
-        }
-        var sample = 1
-        while (
-            options.outWidth / sample > RemovalExportLimits.PREVIEW_MAX_DIM ||
-            options.outHeight / sample > RemovalExportLimits.PREVIEW_MAX_DIM
-        ) {
-            sample *= 2
-        }
-        val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sample }
-        val bitmap =
-            context.contentResolver.openInputStream(uri)?.use {
-                BitmapFactory.decodeStream(it, null, decodeOpts)
-            } ?: return@withContext null
+        val bitmap = decodeImagePreview(context, uri) ?: return@withContext null
         renderOnBitmap(
+            context = context,
             bitmap = bitmap,
             config = config,
             isPremium = isPremium,
@@ -76,6 +79,7 @@ object RemovalPreviewHelper {
             ) ?: return@withContext null
         try {
             renderOnBitmap(
+                context = context,
                 bitmap = frame,
                 config = config,
                 isPremium = isPremium,
@@ -89,12 +93,17 @@ object RemovalPreviewHelper {
         }
     }
 
+    /**
+     * @param recycleInput when true (default), [bitmap] is recycled if a different output is returned.
+     */
     internal fun renderOnBitmap(
+        context: Context? = null,
         bitmap: Bitmap,
         config: WatermarkConfig,
         isPremium: Boolean,
         target: InpaintTarget,
         exportMaxDim: Int,
+        recycleInput: Boolean = true,
     ): Bitmap? {
         if (config.removalStrokes.isEmpty()) {
             return bitmap.copy(Bitmap.Config.ARGB_8888, false)
@@ -113,12 +122,32 @@ object RemovalPreviewHelper {
                     quality,
                     target,
                     previewScale,
+                    context = context,
                 )
-            if (bitmap !== out) bitmap.recycle()
+            if (recycleInput && bitmap !== out) bitmap.recycle()
             result = out
         } finally {
             mask.release()
         }
         return result
+    }
+
+    private fun decodeImagePreview(context: Context, uri: Uri): Bitmap? {
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, options)
+        }
+        if (options.outWidth <= 0 || options.outHeight <= 0) return null
+        var sample = 1
+        while (
+            options.outWidth / sample > RemovalExportLimits.PREVIEW_MAX_DIM ||
+            options.outHeight / sample > RemovalExportLimits.PREVIEW_MAX_DIM
+        ) {
+            sample *= 2
+        }
+        val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sample }
+        return context.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, decodeOpts)
+        }
     }
 }

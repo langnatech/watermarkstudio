@@ -23,12 +23,14 @@ data class RemovalRegion(
         private const val MIN_REGION_SIZE = 10
         private const val STROKE_REGION_PADDING_FACTOR = 1.25f
 
-        fun fromConfig(bitmapWidth: Int, bitmapHeight: Int, config: WatermarkConfig): RemovalRegion =
-            if (config.removalStrokes.isNotEmpty()) {
-                fromStrokes(bitmapWidth, bitmapHeight, config)
+        fun fromConfig(bitmapWidth: Int, bitmapHeight: Int, config: WatermarkConfig): RemovalRegion {
+            val paintStrokes = config.removalStrokes.filter { !it.isEraser }
+            return if (paintStrokes.isNotEmpty()) {
+                fromStrokes(bitmapWidth, bitmapHeight, config.copy(removalStrokes = paintStrokes))
             } else {
                 empty(bitmapWidth, bitmapHeight)
             }
+        }
 
         fun fromStrokes(bitmapWidth: Int, bitmapHeight: Int, config: WatermarkConfig): RemovalRegion {
             if (bitmapWidth <= 0 || bitmapHeight <= 0 || config.removalStrokes.isEmpty()) {

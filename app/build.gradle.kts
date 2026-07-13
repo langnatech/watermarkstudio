@@ -58,8 +58,8 @@ android {
     applicationId = "com.watermarkstudio"
     minSdk = 24
     targetSdk = 36
-    versionCode = 22
-    versionName = "1.1.4"
+    versionCode = 23
+    versionName = "1.1.5"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -124,6 +124,12 @@ android {
     jniLibs {
       pickFirsts += "**/libc++_shared.so"
     }
+    resources {
+      excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    }
+  }
+  androidResources {
+    noCompress += "onnx"
   }
 }
 
@@ -214,7 +220,43 @@ dependencies {
   implementation(libs.android.billing.ktx)
   implementation(libs.androidx.fragment)
   implementation(libs.opencv)
+  implementation(libs.onnxruntime.android)
   implementation(libs.ffmpeg.kit.lib)
   // "ksp"(libs.androidx.room.compiler)
   // "ksp"(libs.moshi.kotlin.codegen)
+}
+
+val onDeviceInpaintModelFile =
+  layout.projectDirectory.file("src/main/assets/ml/lama_fp32.onnx")
+
+tasks.register<Exec>("downloadOnDeviceInpaintModel") {
+  group = "ml"
+  description = "Download Carve LaMa ONNX into assets (delivery mode B)"
+  val dest = onDeviceInpaintModelFile.asFile
+  outputs.file(dest)
+  onlyIf {
+    !dest.exists() || dest.length() < 200_000_000L
+  }
+  doFirst {
+    dest.parentFile.mkdirs()
+  }
+  commandLine(
+    "curl",
+    "-L",
+    "--retry",
+    "5",
+    "--retry-delay",
+    "3",
+    "--connect-timeout",
+    "30",
+    "-o",
+    dest.absolutePath,
+    providers.gradleProperty("ondeviceInpaintModelUrl")
+      .orElse("https://hf-mirror.com/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx")
+      .get(),
+  )
+}
+
+tasks.named("preBuild").configure {
+  dependsOn("downloadOnDeviceInpaintModel")
 }
