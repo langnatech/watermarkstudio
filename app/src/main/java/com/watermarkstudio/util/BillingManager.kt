@@ -23,6 +23,12 @@ sealed class BillingUiEvent {
     data class ProductUnavailable(val productId: String) : BillingUiEvent()
     data object BillingNotReady : BillingUiEvent()
     data class QueryFailed(val message: String) : BillingUiEvent()
+    /** PBL 9: user payment method has insufficient funds for this purchase. */
+    data object PaymentDeclinedInsufficientFunds : BillingUiEvent()
+    /** PBL 9: user is not eligible for the configured subscription offer. */
+    data object UserIneligibleForOffer : BillingUiEvent()
+    /** Purchase or billing flow failed with a generic error (see log for details). */
+    data class PurchaseFailed(val message: String) : BillingUiEvent()
 }
 
 class BillingManager(
@@ -74,11 +80,16 @@ class BillingManager(
     }
 
     private fun initializeBillingClient() {
+        val pendingPurchasesParams =
+            PendingPurchasesParams.newBuilder()
+                .enableOneTimeProducts()
+                .build()
         billingClient = BillingClient.newBuilder(context)
             .setListener(this)
-            .enablePendingPurchases()
+            .enablePendingPurchases(pendingPurchasesParams)
+            .enableAutoServiceReconnection()
             .build()
-        
+
         connectToPlayStore()
     }
 
@@ -123,7 +134,13 @@ class BillingManager(
         } else if (billingResult.responseCode == BillingClient.BillingResponseCode.USER_CANCELED) {
             Log.d(TAG, "User canceled billing flow.")
         } else {
-            Log.e(TAG, "Purchases update failed: Err Code ${billingResult.responseCode}, Msg: ${billingResult.debugMessage}")
+            Log.e(
+                TAG,
+                "Purchases update failed: code=${billingResult.responseCode}, " +
+                    "subCode=${billingResult.onPurchasesUpdatedSubResponseCode}, " +
+                    "msg=${billingResult.debugMessage}",
+            )
+            emitPurchaseFailureEvent(billingResult)
         }
     }
 
@@ -230,10 +247,18 @@ class BillingManager(
             .setProductList(productList)
             .build()
 
-        billingClient.queryProductDetailsAsync(params) { billingResult, productDetailsList ->
+        billingClient.queryProductDetailsAsync(params) { billingResult, queryProductDetailsResult ->
             _productsQueryComplete.value = true
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                Log.d(TAG, "Product Details Query Completed: ${productDetailsList.size} items found.")
+                val productDetailsList = queryProductDetailsResult.productDetailsList
+                val unfetched = queryProductDetailsResult.unfetchedProductList
+                Log.d(TAG, "Product Details Query Completed: ${productDetailsList.size} fetched, ${unfetched.size} unfetched.")
+                unfetched.forEach { item ->
+                    Log.w(
+                        TAG,
+                        "Unfetched product id=${item.productId}, status=${item.statusCode}",
+                    )
+                }
                 _products.value = productDetailsList
                 if (productDetailsList.isEmpty()) {
                     Log.w(TAG, "Product details list empty. Check Play Console activation and test track.")
@@ -295,8 +320,35 @@ class BillingManager(
             .build()
 
         val billingResult = billingClient.launchBillingFlow(activity, billingFlowParams)
-        Log.d(TAG, "Launched real billing flow for $productId. Response Code: ${billingResult.responseCode}")
-        return billingResult.responseCode == BillingClient.BillingResponseCode.OK
+        Log.d(
+            TAG,
+            "Launched billing flow for $productId. code=${billingResult.responseCode}, " +
+                "subCode=${billingResult.onPurchasesUpdatedSubResponseCode}",
+        )
+        if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+            emitPurchaseFailureEvent(billingResult)
+            return false
+        }
+        return true
+    }
+
+    private fun emitPurchaseFailureEvent(billingResult: BillingResult) {
+        scope.launch(Dispatchers.Main) {
+            _purchaseCompletedEvent.value = false
+            _billingUiEvent.value =
+                when (billingResult.onPurchasesUpdatedSubResponseCode) {
+                    BillingClient.OnPurchasesUpdatedSubResponseCode.PAYMENT_DECLINED_DUE_TO_INSUFFICIENT_FUNDS ->
+                        BillingUiEvent.PaymentDeclinedInsufficientFunds
+                    BillingClient.OnPurchasesUpdatedSubResponseCode.USER_INELIGIBLE ->
+                        BillingUiEvent.UserIneligibleForOffer
+                    else ->
+                        BillingUiEvent.PurchaseFailed(
+                            billingResult.debugMessage.ifBlank {
+                                "Purchase failed (${billingResult.responseCode})"
+                            },
+                        )
+                }
+        }
     }
 
     private fun reportProductUnavailable(productId: String) {

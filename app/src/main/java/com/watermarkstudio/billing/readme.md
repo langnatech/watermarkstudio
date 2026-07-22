@@ -1,5 +1,15 @@
 # Play 订阅（Billing）
 
+## PBL 9 迁移（当前）
+
+- 依赖：`billing-ktx` **9.1.0**（`gradle/libs.versions.toml`）
+- `enablePendingPurchases(PendingPurchasesParams)` 替代无参 API
+- `queryProductDetailsAsync` 回调使用 `QueryProductDetailsResult`（`productDetailsList` + `unfetchedProductList`）
+- `enableAutoServiceReconnection()` 启用断线自动重连
+- `BillingResult.onPurchasesUpdatedSubResponseCode`：余额不足 / 优惠无资格等子码映射到 `BillingUiEvent`
+
+参考：[迁移到 PBL 9](https://developer.android.com/google/play/billing/migrate-gpblv9?hl=zh-cn)
+
 ## 职责划分
 
 | 来源 | 内容 |

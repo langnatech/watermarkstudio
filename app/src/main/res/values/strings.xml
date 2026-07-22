@@ -172,6 +172,8 @@
     <string name="editor_settings_title">Settings</string>
     <string name="billing_product_unavailable">Subscription product is not available. Check Play Console configuration.</string>
     <string name="billing_not_ready">Google Play Billing is not ready. Please try again.</string>
+    <string name="billing_payment_insufficient_funds">Payment declined due to insufficient funds. Please update your payment method in Google Play.</string>
+    <string name="billing_user_ineligible">You are not eligible for this subscription offer.</string>
     <string name="toast_restore_none">No active subscription found for this account.</string>
     <string name="toast_restore_error">Could not restore purchases. Check your network and try again.</string>
     <string name="btn_manage_subscription">Manage subscription</string>

@@ -178,6 +178,15 @@ fun SubscriptionScreen(
             is BillingUiEvent.QueryFailed -> {
                 Toast.makeText(context, (billingUiEvent as BillingUiEvent.QueryFailed).message, Toast.LENGTH_SHORT).show()
             }
+            is BillingUiEvent.PaymentDeclinedInsufficientFunds -> {
+                Toast.makeText(context, context.getString(R.string.billing_payment_insufficient_funds), Toast.LENGTH_LONG).show()
+            }
+            is BillingUiEvent.UserIneligibleForOffer -> {
+                Toast.makeText(context, context.getString(R.string.billing_user_ineligible), Toast.LENGTH_LONG).show()
+            }
+            is BillingUiEvent.PurchaseFailed -> {
+                Toast.makeText(context, (billingUiEvent as BillingUiEvent.PurchaseFailed).message, Toast.LENGTH_SHORT).show()
+            }
             null -> Unit
         }
         if (billingUiEvent != null) {

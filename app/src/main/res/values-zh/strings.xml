@@ -164,6 +164,8 @@
     <string name="editor_settings_title">设置</string>
     <string name="billing_product_unavailable">订阅商品不可用，请在 Play 控制台配置商品 ID。</string>
     <string name="billing_not_ready">Google Play 结算未就绪，请稍后重试。</string>
+    <string name="billing_payment_insufficient_funds">余额不足，支付被拒绝。请在 Google Play 中更新付款方式。</string>
+    <string name="billing_user_ineligible">您不符合当前订阅优惠的资格。</string>
     <string name="toast_restore_none">未找到该账号的有效订阅。</string>
     <string name="toast_restore_error">恢复购买失败，请检查网络后重试。</string>
     <string name="btn_manage_subscription">管理订阅</string>
