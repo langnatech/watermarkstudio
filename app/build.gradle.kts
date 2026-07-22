@@ -58,8 +58,8 @@ android {
     applicationId = "com.watermarkstudio"
     minSdk = 24
     targetSdk = 36
-    versionCode = 24
-    versionName = "1.1.6"
+    versionCode = 26
+    versionName = "1.1.8"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -122,6 +122,8 @@ android {
   testOptions { unitTests { isIncludeAndroidResources = true } }
   packaging {
     jniLibs {
+      // Uncompressed, page-aligned native libs (required for 16 KB devices on Play).
+      useLegacyPackaging = false
       pickFirsts += "**/libc++_shared.so"
     }
     resources {

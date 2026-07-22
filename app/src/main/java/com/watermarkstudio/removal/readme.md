@@ -75,7 +75,7 @@
 | 项 | 实现 |
 |----|------|
 | 模型 | Carve/LaMa-ONNX `lama_fp32.onnx`（Apache-2.0 系原版 LaMa 转换） |
-| 运行时 | `onnxruntime-android` |
+| 运行时 | `onnxruntime-android` **≥1.22.0**（`libonnxruntime4j_jni.so` 16 KB 对齐；勿用 1.20.x） |
 | 配置 | `res/values/ondevice_inpaint.xml` → `OnDeviceInpaintConfig` |
 | 推理 | `OnDeviceLamaInpainter`：ROI crop → 512×512 → `image`/`mask` → 贴回 `pasteRepaired` |
 | 门控 | 仅 `RemovalQuality.ADVANCED` + `InpaintTarget.IMAGE`；预览/视频默认 `false` |
